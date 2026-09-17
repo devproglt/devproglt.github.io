@@ -1,0 +1,46 @@
+﻿# Dependances
+node_modules/
+
+# Build
+dist/
+dist-ssr/
+dev-dist/
+.deploy/
+
+# Cache des outils
+.vite/
+.cache/
+*.tsbuildinfo
+
+# Tests
+test-results/
+playwright-report/
+blob-report/
+
+# Environnement local
+.env
+.env.local
+.env.*.local
+
+# Journaux
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+logs/
+
+# Systemes d exploitation
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Editeurs
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# Sauvegardes locales de l application
+backups/
+*.local.json
