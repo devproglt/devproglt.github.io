@@ -5,7 +5,7 @@ import { getMeta, setMeta, getDeviceId } from '../../db/meta';
 import { SyncEngine } from '../../sync/engine';
 import { downloadImportTemplate } from '../../io/import';
 import { getAllStudents, clearAllStudentsAndData, deduplicateStudents } from '../../db/students';
-import { getAllAttendances, clearAllAttendances } from '../../db/attendances';
+import { getAllAttendances, clearAllAttendances, normalizeAndRepairAttendances } from '../../db/attendances';
 import { db } from '../../db/schema';
 import { getTodayBrussels } from '../../domain/dates';
 
@@ -86,7 +86,7 @@ export class ParametresView {
           </button>
 
           <button class="btn btn-secondary" id="param-clean-duplicates-btn" style="width: 100%; margin-top: 4px;">
-            🧹 Nettoyer et fusionner les doublons d'élèves
+            🧹 Nettoyer et fusionner les doublons (Élèves & Présences)
           </button>
         </section>
 
@@ -250,12 +250,9 @@ export class ParametresView {
     if (cleanDupBtn) {
       cleanDupBtn.addEventListener('click', async () => {
         showToast('Analyse et fusion des doublons...');
-        const merged = await deduplicateStudents();
-        if (merged > 0) {
-          showToast(`Nettoyage réussi : ${merged} élève(s) en double fusionné(s) !`);
-        } else {
-          showToast('Aucun doublon trouvé.');
-        }
+        const mergedStudents = await deduplicateStudents();
+        const repairedAttendances = await normalizeAndRepairAttendances();
+        showToast(`Nettoyage terminé : ${mergedStudents} élève(s) fusionné(s), ${repairedAttendances} pointage(s) réparé(s) !`);
         await this.loadDataAndRender();
         this.options.onRefreshNeeded();
       });

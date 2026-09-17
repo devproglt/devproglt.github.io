@@ -8,7 +8,7 @@ import { renderNavbar, setupNavbarEvents } from './ui/components/navbar';
 import { showToast } from './ui/components/toast';
 import { getTodayBrussels } from './domain/dates';
 import { SyncEngine, type SyncStatus } from './sync/engine';
-import { getAttendancesByDateAndType } from './db/attendances';
+import { getAttendancesByDateAndType, normalizeAndRepairAttendances } from './db/attendances';
 import { getAllStudents, deduplicateStudents } from './db/students';
 import { calculateDaySummary } from './domain/stats';
 
@@ -97,19 +97,20 @@ class App {
       this.renderHeaderUI();
     });
 
-    // 3. Déduplication de sécurité initiale
+    // 4. Déduplication et normalisation de sécurité initiale
     await deduplicateStudents();
+    await normalizeAndRepairAttendances();
 
-    // 4. Configuration des routes
+    // 5. Configuration des routes
     this.setupRoutes();
 
-    // 5. Mise à jour initiale du topo header
+    // 6. Mise à jour initiale du topo header
     await this.updateDaySummaryHeader();
 
-    // 6. Enregistrement du Service Worker PWA
+    // 7. Enregistrement du Service Worker PWA
     this.initServiceWorker();
 
-    // 7. Lancement initial de la synchronisation (push/pull)
+    // 8. Lancement initial de la synchronisation (push/pull)
     this.syncEngine.triggerSync('app_init');
   }
 

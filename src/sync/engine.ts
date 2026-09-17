@@ -1,6 +1,7 @@
 import { getMeta, setMeta, getDeviceId } from '../db/meta';
 import { getDirtyStudents, markStudentsSynced, deduplicateStudents } from '../db/students';
-import { getDirtyAttendances, markAttendancesSynced } from '../db/attendances';
+import { getDirtyAttendances, markAttendancesSynced, normalizeAndRepairAttendances } from '../db/attendances';
+import { formatDateBrussels } from '../domain/dates';
 import { db } from '../db/schema';
 import { pushToServer, pullFromServer } from './client';
 
@@ -175,13 +176,17 @@ export class SyncEngine {
                 const oldId = matchByName.id;
                 const oldAttendances = await db.attendances.where('studentId').equals(oldId).toArray();
                 for (const att of oldAttendances) {
-                  const newAttId = `${incomingS.id}_${att.date}_${att.type}`;
+                  const cleanDate = formatDateBrussels(att.date);
+                  const cleanType = att.type === 'course' ? 'course' : 'presence';
+                  const newAttId = `${incomingS.id}_${cleanDate}_${cleanType}`;
                   const existingAtt = await db.attendances.get(newAttId);
                   if (!existingAtt) {
                     await db.attendances.put({
                       ...att,
                       id: newAttId,
                       studentId: incomingS.id,
+                      date: cleanDate,
+                      type: cleanType,
                     });
                   }
                   await db.attendances.delete(att.id);
@@ -213,9 +218,19 @@ export class SyncEngine {
           if (pullRes.attendances) {
             totalPulled += pullRes.attendances.length;
             for (const incomingA of pullRes.attendances) {
-              const local = await db.attendances.get(incomingA.id);
+              const cleanDate = formatDateBrussels(incomingA.date);
+              const cleanType: 'presence' | 'course' = incomingA.type === 'course' ? 'course' : 'presence';
+              const canonicalId = `${incomingA.studentId}_${cleanDate}_${cleanType}`;
+              const local = await db.attendances.get(canonicalId);
               if (!local || incomingA.updatedAt >= local.updatedAt || options.forceFull) {
-                await db.attendances.put({ ...incomingA, dirty: 0 });
+                await db.attendances.put({
+                  ...incomingA,
+                  id: canonicalId,
+                  date: cleanDate,
+                  type: cleanType,
+                  present: Boolean(incomingA.present),
+                  dirty: 0,
+                });
               }
             }
           }
@@ -226,8 +241,9 @@ export class SyncEngine {
           await setMeta('lastSyncAt', Date.now());
         });
 
-        // Déduplication de sécurité finale
+        // Déduplication et normalisation de sécurité finale
         await deduplicateStudents();
+        await normalizeAndRepairAttendances();
       }
 
       this.retryDelayMs = 30000; // Reset backoff

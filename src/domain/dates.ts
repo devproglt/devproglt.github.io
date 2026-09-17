@@ -12,23 +12,49 @@ export function getTodayBrussels(): string {
 }
 
 /**
- * Formate un objet Date ou timestamp au format YYYY-MM-DD (Europe/Brussels).
+ * Formate un objet Date, timestamp ou chaîne au format YYYY-MM-DD (Europe/Brussels).
  */
 export function formatDateBrussels(dateInput: Date | number | string): string {
-  const date = new Date(dateInput);
-  const formatter = new Intl.DateTimeFormat('fr-BE', {
-    timeZone: TIMEZONE,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
+  if (!dateInput) return getTodayBrussels();
+  try {
+    if (typeof dateInput === 'string') {
+      const trimmed = dateInput.trim();
+      if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+        return trimmed;
+      }
+      if (trimmed.includes('/')) {
+        const parts = trimmed.split('/');
+        if (parts.length === 3) {
+          const d = parts[0].padStart(2, '0');
+          const m = parts[1].padStart(2, '0');
+          const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+          return `${y}-${m}-${d}`;
+        }
+      }
+      if (trimmed.includes('T')) {
+        return trimmed.substring(0, 10);
+      }
+    }
 
-  const parts = formatter.formatToParts(date);
-  const day = parts.find((p) => p.type === 'day')?.value || '01';
-  const month = parts.find((p) => p.type === 'month')?.value || '01';
-  const year = parts.find((p) => p.type === 'year')?.value || '2026';
+    const date = new Date(dateInput);
+    if (isNaN(date.getTime())) return String(dateInput);
 
-  return `${year}-${month}-${day}`;
+    const formatter = new Intl.DateTimeFormat('fr-BE', {
+      timeZone: TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+
+    const parts = formatter.formatToParts(date);
+    const day = parts.find((p) => p.type === 'day')?.value || '01';
+    const month = parts.find((p) => p.type === 'month')?.value || '01';
+    const year = parts.find((p) => p.type === 'year')?.value || '2026';
+
+    return `${year}-${month}-${day}`;
+  } catch {
+    return String(dateInput);
+  }
 }
 
 /**

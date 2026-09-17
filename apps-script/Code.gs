@@ -90,10 +90,18 @@ function handlePush(ss, request, configSheet) {
 
     // --- Processus PUSH pour les pointages ---
     if (request.attendances && request.attendances.length > 0) {
-      const attendanceIndex = buildIdMap(attendancesSheet);
+      const attendanceIndex = buildAttendanceKeyMap(attendancesSheet);
       for (let i = 0; i < request.attendances.length; i++) {
         const incoming = request.attendances[i];
-        const rowIdx = attendanceIndex[incoming.id];
+        const cleanDate = normalizeDateVal(incoming.date);
+        const cleanType = incoming.type === 'course' ? 'course' : 'presence';
+        const key = incoming.studentId + '_' + cleanDate + '_' + cleanType;
+        
+        let rowIdx = attendanceIndex[incoming.id] || attendanceIndex[key];
+
+        incoming.date = cleanDate;
+        incoming.type = cleanType;
+        incoming.id = key;
 
         if (rowIdx) {
           const currentUpdatedAt = parseInt(attendancesSheet.getRange(rowIdx, 8).getValue() || 0, 10);
@@ -105,7 +113,9 @@ function handlePush(ss, request, configSheet) {
           }
         } else {
           appendAttendanceRow(attendancesSheet, incoming, nextSeq++);
-          attendanceIndex[incoming.id] = attendancesSheet.getLastRow();
+          const lastRow = attendancesSheet.getLastRow();
+          attendanceIndex[incoming.id] = lastRow;
+          attendanceIndex[key] = lastRow;
           accepted.push(incoming.id);
         }
       }
@@ -132,8 +142,7 @@ function handlePull(ss, request) {
   const since = parseInt(request.since || 0, 10);
   const currentNextSeq = parseInt(getConfigValue(configSheet, 'nextSeq') || '1', 10);
 
-  const pulledStudents = [];
-  const seenStudentKeys = {};
+  const pulledStudentsMap = {};
   const studentValues = studentsSheet.getDataRange().getValues();
   // Ligne 1 = en-têtes
   for (let i = 1; i < studentValues.length; i++) {
@@ -167,27 +176,26 @@ function handlePull(ss, request) {
       const year = String(row[4] || '').trim();
 
       const nameKey = normalizeStr(lastName) + '_' + normalizeStr(firstName) + '_' + normalizeStr(year);
-      if (seenStudentKeys[nameKey]) {
-        continue; // Déduplication automatique sur le flux
-      }
-      seenStudentKeys[nameKey] = true;
+      const existingStudent = pulledStudentsMap[nameKey];
 
-      pulledStudents.push({
-        id: id,
-        lastName: lastName,
-        firstName: firstName,
-        gender: String(row[3] || 'F').toUpperCase().startsWith('M') ? 'M' : 'F',
-        year: year,
-        active: active,
-        notes: String(row[6] || ''),
-        createdAt: String(row[7] || new Date().toISOString()),
-        updatedAt: updatedAt,
-        isInternal: Boolean(row[9]),
-      });
+      if (!existingStudent || updatedAt >= existingStudent.updatedAt) {
+        pulledStudentsMap[nameKey] = {
+          id: id,
+          lastName: lastName,
+          firstName: firstName,
+          gender: String(row[3] || 'F').toUpperCase().startsWith('M') ? 'M' : 'F',
+          year: year,
+          active: active,
+          notes: String(row[6] || ''),
+          createdAt: String(row[7] || new Date().toISOString()),
+          updatedAt: updatedAt,
+          isInternal: Boolean(row[9]),
+        };
+      }
     }
   }
 
-  const pulledAttendances = [];
+  const pulledAttendancesMap = {};
   const attendanceValues = attendancesSheet.getDataRange().getValues();
   for (let i = 1; i < attendanceValues.length; i++) {
     const row = attendanceValues[i];
@@ -204,18 +212,35 @@ function handlePull(ss, request) {
         updatedAt = Date.now();
       }
 
-      pulledAttendances.push({
-        id: String(row[0]),
-        studentId: String(row[1]),
-        date: String(row[2]),
-        type: String(row[3] || 'presence'),
-        present: Boolean(row[4]),
-        markedAt: parseInt(row[5] || 0, 10),
-        deviceId: String(row[6] || ''),
-        updatedAt: updatedAt,
-      });
+      const studentId = String(row[1] || '').trim();
+      const cleanDate = normalizeDateVal(row[2]);
+      const cleanType = String(row[3] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
+      const attKey = studentId + '_' + cleanDate + '_' + cleanType;
+
+      let presentVal = row[4];
+      let present = true;
+      if (presentVal === false || String(presentVal).trim().toLowerCase() === 'false' || String(presentVal).trim().toLowerCase() === 'faux' || String(presentVal).trim() === '0') {
+        present = false;
+      }
+
+      const existingAtt = pulledAttendancesMap[attKey];
+      if (!existingAtt || updatedAt >= existingAtt.updatedAt) {
+        pulledAttendancesMap[attKey] = {
+          id: attKey,
+          studentId: studentId,
+          date: cleanDate,
+          type: cleanType,
+          present: present,
+          markedAt: parseInt(row[5] || 0, 10),
+          deviceId: String(row[6] || ''),
+          updatedAt: updatedAt,
+        };
+      }
     }
   }
+
+  const pulledStudents = Object.keys(pulledStudentsMap).map(function(k) { return pulledStudentsMap[k]; });
+  const pulledAttendances = Object.keys(pulledAttendancesMap).map(function(k) { return pulledAttendancesMap[k]; });
 
   return jsonResponse({
     ok: true,
@@ -223,6 +248,54 @@ function handlePull(ss, request) {
     attendances: pulledAttendances,
     cursor: currentNextSeq,
   });
+}
+
+function normalizeDateVal(val) {
+  if (!val) return '';
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, 'Europe/Brussels', 'yyyy-MM-dd');
+  }
+  const str = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+  if (str.indexOf('T') !== -1) {
+    return str.substring(0, 10);
+  }
+  if (str.indexOf('/') !== -1) {
+    const parts = str.split('/');
+    if (parts.length === 3) {
+      const d = parts[0].length === 1 ? '0' + parts[0] : parts[0];
+      const m = parts[1].length === 1 ? '0' + parts[1] : parts[1];
+      const y = parts[2].length === 2 ? '20' + parts[2] : parts[2];
+      return y + '-' + m + '-' + d;
+    }
+  }
+  try {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) {
+      return Utilities.formatDate(d, 'Europe/Brussels', 'yyyy-MM-dd');
+    }
+  } catch (e) {}
+  return str;
+}
+
+function buildAttendanceKeyMap(sheet) {
+  const map = {};
+  const values = sheet.getDataRange().getValues();
+  for (let i = 1; i < values.length; i++) {
+    const id = String(values[i][0] || '').trim();
+    const studentId = String(values[i][1] || '').trim();
+    const date = normalizeDateVal(values[i][2]);
+    const type = String(values[i][3] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
+    if (id) {
+      map[id] = i + 1;
+    }
+    if (studentId && date) {
+      map[studentId + '_' + date + '_' + type] = i + 1;
+    }
+  }
+  return map;
 }
 
 function normalizeStr(s) {
@@ -328,3 +401,111 @@ function setConfigValue(configSheet, key, value) {
 function jsonResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
+
+/**
+ * Menu interactif dans Google Sheets pour nettoyer et dédoublonner les feuilles directement.
+ */
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Présences')
+    .addItem('🧹 Nettoyer et dédoublonner les feuilles', 'nettoyerDoublonsSheet')
+    .addToUi();
+}
+
+/**
+ * Fonction de nettoyage complet du Google Sheet :
+ * - Garantit strictement 1 ligne max par élève/date/type dans la feuille attendances
+ * - Harmonise les dates au format YYYY-MM-DD
+ * - Déduplique les élèves de même Nom + Prénom + Classe
+ */
+function nettoyerDoublonsSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const attendancesSheet = ss.getSheetByName('attendances');
+  const studentsSheet = ss.getSheetByName('students');
+
+  let attRemoved = 0;
+  let studRemoved = 0;
+
+  if (attendancesSheet) {
+    const values = attendancesSheet.getDataRange().getValues();
+    if (values.length > 1) {
+      const seen = {};
+      const rowsToKeep = [values[0]]; // En-têtes
+
+      for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        if (!row[1] && !row[2]) continue;
+
+        const studentId = String(row[1] || '').trim();
+        const cleanDate = normalizeDateVal(row[2]);
+        const cleanType = String(row[3] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
+        const key = studentId + '_' + cleanDate + '_' + cleanType;
+
+        row[0] = key;
+        row[2] = cleanDate;
+        row[3] = cleanType;
+
+        if (seen[key]) {
+          const prevIdx = seen[key];
+          const prevUpdatedAt = parseInt(rowsToKeep[prevIdx][7] || 0, 10);
+          const curUpdatedAt = parseInt(row[7] || 0, 10);
+          if (curUpdatedAt >= prevUpdatedAt) {
+            rowsToKeep[prevIdx] = row;
+          }
+          attRemoved++;
+        } else {
+          seen[key] = rowsToKeep.length;
+          rowsToKeep.push(row);
+        }
+      }
+
+      attendancesSheet.clearContents();
+      if (rowsToKeep.length > 0) {
+        attendancesSheet.getRange(1, 1, rowsToKeep.length, rowsToKeep[0].length).setValues(rowsToKeep);
+      }
+    }
+  }
+
+  if (studentsSheet) {
+    const values = studentsSheet.getDataRange().getValues();
+    if (values.length > 1) {
+      const seen = {};
+      const rowsToKeep = [values[0]]; // En-têtes
+
+      for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        if (!row[1] && !row[2]) continue;
+
+        const lastName = normalizeStr(row[1]);
+        const firstName = normalizeStr(row[2]);
+        const year = normalizeStr(row[4]);
+        const key = lastName + '_' + firstName + '_' + year;
+
+        if (seen[key]) {
+          const prevIdx = seen[key];
+          const prevUpdatedAt = parseInt(rowsToKeep[prevIdx][8] || 0, 10);
+          const curUpdatedAt = parseInt(row[8] || 0, 10);
+          if (curUpdatedAt >= prevUpdatedAt) {
+            rowsToKeep[prevIdx] = row;
+          }
+          studRemoved++;
+        } else {
+          seen[key] = rowsToKeep.length;
+          rowsToKeep.push(row);
+        }
+      }
+
+      studentsSheet.clearContents();
+      if (rowsToKeep.length > 0) {
+        studentsSheet.getRange(1, 1, rowsToKeep.length, rowsToKeep[0].length).setValues(rowsToKeep);
+      }
+    }
+  }
+
+  try {
+    SpreadsheetApp.getUi().alert('Nettoyage terminé !\n- Pointages : ' + attRemoved + ' doublon(s) purgé(s)\n- Élèves : ' + studRemoved + ' doublon(s) purgé(s)');
+  } catch (e) {
+    Logger.log('Nettoyage terminé : ' + attRemoved + ' pointages, ' + studRemoved + ' élèves.');
+  }
+}
+
