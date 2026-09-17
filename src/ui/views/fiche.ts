@@ -8,6 +8,7 @@ export interface FicheViewOptions {
   studentId: string;
   onBack: () => void;
   onRefreshNeeded: () => void;
+  onInspectSessionClick?: (date: string, type: 'presence' | 'course') => void;
 }
 
 export class FicheView {
@@ -146,14 +147,17 @@ export class FicheView {
                 const badgeColor = isPresence ? 'var(--accent-presence)' : 'var(--accent-course)';
                 const badgeBg = isPresence ? 'var(--accent-presence-light)' : 'var(--accent-course-light)';
                 return `
-                  <div style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between;">
+                  <div class="fiche-session-card" data-date="${att.date}" data-type="${att.type}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
                     <div>
-                      <div style="font-size: var(--font-size-sm); font-weight: 600;">${formatReadableDate(att.date)}</div>
+                      <div style="font-size: var(--font-size-sm); font-weight: 600; color: var(--text-primary);">${formatReadableDate(att.date)}</div>
                       <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 2px;">Heure : ${formatTimeBrussels(att.markedAt)}</div>
                     </div>
-                    <span style="background: ${badgeBg}; color: ${badgeColor}; padding: 4px 10px; border-radius: var(--radius-full); font-size: var(--font-size-xs); font-weight: 700;">
-                      ${isPresence ? STRINGS.types.presence : STRINGS.types.course}
-                    </span>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span style="background: ${badgeBg}; color: ${badgeColor}; padding: 4px 10px; border-radius: var(--radius-full); font-size: var(--font-size-xs); font-weight: 700;">
+                        ${isPresence ? STRINGS.types.presence : STRINGS.types.course}
+                      </span>
+                      <span style="color: var(--text-muted); font-size: 0.9rem; font-weight: 700;">→</span>
+                    </div>
                   </div>
                 `;
               }).join('')}
@@ -202,6 +206,17 @@ export class FicheView {
         this.loadDataAndRender();
       });
     }
+
+    const sessionCards = this.container.querySelectorAll<HTMLElement>('.fiche-session-card');
+    sessionCards.forEach((card) => {
+      card.addEventListener('click', () => {
+        const dateStr = card.dataset.date;
+        const type = (card.dataset.type || 'presence') as 'presence' | 'course';
+        if (dateStr && this.options.onInspectSessionClick) {
+          this.options.onInspectSessionClick(dateStr, type);
+        }
+      });
+    });
   }
 
   private escapeHtml(str: string): string {

@@ -144,6 +144,15 @@ export class SyncEngine {
 
       if (pullRes.students || pullRes.attendances) {
         await db.transaction('rw', [db.students, db.attendances, db.meta], async () => {
+          if (options.forceFull) {
+            if (pullRes.students && pullRes.students.length > 0) {
+              await db.students.clear();
+            }
+            if (pullRes.attendances) {
+              await db.attendances.clear();
+            }
+          }
+
           // Fusion des élèves
           if (pullRes.students) {
             totalPulled += pullRes.students.length;
@@ -226,6 +235,7 @@ export class SyncEngine {
                 await db.attendances.put({
                   ...incomingA,
                   id: canonicalId,
+                  studentId: incomingA.studentId,
                   date: cleanDate,
                   type: cleanType,
                   present: Boolean(incomingA.present),

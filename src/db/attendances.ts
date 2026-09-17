@@ -70,45 +70,74 @@ export async function getAttendancesByStudent(studentId: string): Promise<Attend
  * - Garantit strictement 1 pointage max par élève / date / type
  * - Corrige les dates au format standard YYYY-MM-DD
  * - Harmonise les identifiants composites id = studentId_date_type
+ * - Purge tout résidu, orphelin ou ancien format
  */
 export async function normalizeAndRepairAttendances(): Promise<number> {
   const allAttendances = await db.attendances.toArray();
-  let repairedCount = 0;
+  const allStudents = await db.students.toArray();
+  const validStudentMap = new Map(allStudents.map((s) => [s.id, s]));
+
   const uniqueKeyMap = new Map<string, AttendanceRecord>();
+  let duplicateCount = 0;
 
+  for (const att of allAttendances) {
+    const studentId = att.studentId;
+    
+    // Si l'élève n'existe plus en base (orphelin issu d'anciens doublons), l'ignorer
+    if (!validStudentMap.has(studentId)) {
+      duplicateCount++;
+      continue;
+    }
+
+    const cleanDate = formatDateBrussels(att.date);
+    if (!cleanDate) {
+      duplicateCount++;
+      continue;
+    }
+
+    const cleanType: 'presence' | 'course' = String(att.type).toLowerCase() === 'course' ? 'course' : 'presence';
+    const canonicalKey = `${studentId}_${cleanDate}_${cleanType}`;
+
+    const existing = uniqueKeyMap.get(canonicalKey);
+
+    if (!existing) {
+      uniqueKeyMap.set(canonicalKey, {
+        ...att,
+        id: canonicalKey,
+        studentId,
+        date: cleanDate,
+        type: cleanType,
+        present: Boolean(att.present),
+        dirty: att.dirty !== undefined ? att.dirty : 0,
+      });
+    } else {
+      duplicateCount++;
+      // Fusionner : conserver le statut le plus récent ou si marqué présent
+      const isAttNewer = (att.updatedAt || 0) > (existing.updatedAt || 0);
+      const keepPresent = isAttNewer ? Boolean(att.present) : (existing.present || Boolean(att.present));
+      const latestUpdatedAt = Math.max(att.updatedAt || 0, existing.updatedAt || 0);
+      const latestMarkedAt = Math.max(att.markedAt || 0, existing.markedAt || 0);
+      const dirty = (att.dirty || existing.dirty) ? 1 : 0;
+
+      uniqueKeyMap.set(canonicalKey, {
+        ...existing,
+        id: canonicalKey,
+        present: keepPresent,
+        updatedAt: latestUpdatedAt,
+        markedAt: latestMarkedAt,
+        deviceId: (isAttNewer ? att.deviceId : existing.deviceId) || existing.deviceId || '',
+        dirty,
+      });
+    }
+  }
+
+  // Remplacement atomique de la table attendances par la version purgée et dédoublonnée
   await db.transaction('rw', db.attendances, async () => {
-    for (const att of allAttendances) {
-      const cleanDate = formatDateBrussels(att.date);
-      const cleanType: 'presence' | 'course' = att.type === 'course' ? 'course' : 'presence';
-      const studentId = att.studentId;
-
-      const uniqueKey = `${studentId}_${cleanDate}_${cleanType}`;
-      const existing = uniqueKeyMap.get(uniqueKey);
-
-      if (!existing || (att.updatedAt || 0) > (existing.updatedAt || 0) || (att.markedAt || 0) > (existing.markedAt || 0)) {
-        if (existing && existing.id !== att.id) {
-          await db.attendances.delete(existing.id);
-          repairedCount++;
-        }
-        uniqueKeyMap.set(uniqueKey, {
-          ...att,
-          id: uniqueKey,
-          date: cleanDate,
-          type: cleanType,
-          present: Boolean(att.present),
-        });
-      } else {
-        await db.attendances.delete(att.id);
-        repairedCount++;
-      }
-    }
-
-    for (const att of uniqueKeyMap.values()) {
-      await db.attendances.put(att);
-    }
+    await db.attendances.clear();
+    await db.attendances.bulkPut(Array.from(uniqueKeyMap.values()));
   });
 
-  return repairedCount;
+  return duplicateCount;
 }
 
 /**

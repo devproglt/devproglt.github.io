@@ -237,6 +237,12 @@ class App {
           }
         },
         onRefreshNeeded: refreshCallback,
+        onInspectSessionClick: async (dateStr, type) => {
+          this.headerState.date = dateStr;
+          this.headerState.type = type;
+          await this.updateDaySummaryHeader();
+          this.router.navigate('#/jour');
+        },
       });
       this.activeViewInstance = ficheView;
       ficheView.render();
@@ -251,8 +257,12 @@ class App {
         onStudentCardClick: (studentId) => {
           this.router.navigate(`#/fiche?id=${studentId}`);
         },
-        onInspectDateClick: async (dateStr) => {
+        onInspectDateClick: async (dateStr, type) => {
           this.headerState.date = dateStr;
+          if (type) {
+            this.headerState.type = type;
+          }
+          await this.updateDaySummaryHeader();
           this.router.navigate('#/jour');
         },
       });

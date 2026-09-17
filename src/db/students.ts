@@ -223,7 +223,7 @@ export async function markStudentsSynced(ids: string[]): Promise<void> {
 }
 
 /**
- * Détecte et fusionne automatiquement les doublons (même prénom + nom + année).
+ * Détecte et fusionne automatiquement les doublons (même prénom + nom).
  * Conserve l'élève le plus récent/canonique, réassocie les pointages et supprime le doublon.
  */
 export async function deduplicateStudents(): Promise<number> {
@@ -231,7 +231,7 @@ export async function deduplicateStudents(): Promise<number> {
   const groups = new Map<string, StudentRecord[]>();
 
   for (const s of all) {
-    const key = `${normalizeText(s.firstName)}_${normalizeText(s.lastName)}_${(s.year || '').trim().toLowerCase()}`;
+    const key = `${normalizeText(s.firstName)}_${normalizeText(s.lastName)}`;
     const list = groups.get(key) || [];
     list.push(s);
     groups.set(key, list);
@@ -240,29 +240,39 @@ export async function deduplicateStudents(): Promise<number> {
   let mergedCount = 0;
 
   await db.transaction('rw', [db.students, db.attendances], async () => {
-    for (const [_, list] of groups) {
+    for (const list of groups.values()) {
       if (list.length > 1) {
-        // Garder le plus ancien ou celui déjà synchronisé (dirty = 0)
+        // Priorité : actif d'abord, synchronisé (dirty = 0), puis plus récent updatedAt
         list.sort((a, b) => {
+          if (a.active !== b.active) return a.active ? -1 : 1;
           if (a.dirty !== b.dirty) return a.dirty - b.dirty;
-          return a.createdAt.localeCompare(b.createdAt);
+          return (b.updatedAt || 0) - (a.updatedAt || 0);
         });
 
         const canonical = list[0];
         const duplicates = list.slice(1);
 
         for (const dup of duplicates) {
-          // Réassocier tous les pointages du doublon vers le canonique
+          // Réassocier tous les pointages du doublon vers l'élève canonique
           const attendances = await db.attendances.where('studentId').equals(dup.id).toArray();
           for (const att of attendances) {
-            const canonicalAttId = `${canonical.id}_${att.date}_${att.type}`;
+            const cleanDate = att.date;
+            const cleanType = att.type === 'course' ? 'course' : 'presence';
+            const canonicalAttId = `${canonical.id}_${cleanDate}_${cleanType}`;
             const existingCanonicalAtt = await db.attendances.get(canonicalAttId);
+
             if (!existingCanonicalAtt) {
               await db.attendances.put({
                 ...att,
                 id: canonicalAttId,
                 studentId: canonical.id,
-                dirty: 1,
+                date: cleanDate,
+                type: cleanType,
+              });
+            } else if (att.present && !existingCanonicalAtt.present) {
+              await db.attendances.update(canonicalAttId, {
+                present: true,
+                updatedAt: Math.max(att.updatedAt || 0, existingCanonicalAtt.updatedAt || 0),
               });
             }
             await db.attendances.delete(att.id);

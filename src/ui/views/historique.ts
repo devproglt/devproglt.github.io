@@ -10,7 +10,7 @@ import { exportCurrentViewToExcel } from '../../io/export';
 
 export interface HistoriqueViewOptions {
   onStudentCardClick: (studentId: string) => void;
-  onInspectDateClick: (date: string) => void;
+  onInspectDateClick: (date: string, type?: 'presence' | 'course') => void;
 }
 
 export type SortField = 'lastName' | 'firstName' | 'year' | 'presences' | 'courses' | 'total';
@@ -206,14 +206,17 @@ export class HistoriqueView {
         ` : sortedDates.map((dateStr) => {
           const entry = datesMap.get(dateStr)!;
           return `
-            <div class="historique-date-card" data-date="${dateStr}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+            <div class="historique-date-card" data-date="${dateStr}" data-presences="${entry.presences}" data-courses="${entry.courses}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
               <div>
                 <div style="font-size: var(--font-size-base); font-weight: 600;">${formatReadableDate(dateStr)}</div>
                 <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 2px;">${dateStr}</div>
               </div>
-              <div style="display: flex; gap: 12px; font-size: var(--font-size-sm); font-weight: 700;">
-                <span style="color: var(--accent-presence);">Prés. ${entry.presences}</span>
-                <span style="color: var(--accent-course);">Cour. ${entry.courses}</span>
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="display: flex; gap: 8px; font-size: var(--font-size-sm); font-weight: 700;">
+                  <span style="color: var(--accent-presence); background: var(--accent-presence-light); padding: 2px 8px; border-radius: var(--radius-sm);">Prés. ${entry.presences}</span>
+                  <span style="color: var(--accent-course); background: var(--accent-course-light); padding: 2px 8px; border-radius: var(--radius-sm);">Cour. ${entry.courses}</span>
+                </div>
+                <span style="color: var(--text-muted); font-size: 0.9rem; font-weight: 700;">→</span>
               </div>
             </div>
           `;
@@ -343,7 +346,10 @@ export class HistoriqueView {
     dateCards.forEach((card) => {
       card.addEventListener('click', () => {
         const dateStr = card.dataset.date;
-        if (dateStr) this.options.onInspectDateClick(dateStr);
+        const presCount = parseInt(card.dataset.presences || '0', 10);
+        const courCount = parseInt(card.dataset.courses || '0', 10);
+        const preferredType: 'presence' | 'course' = (courCount > 0 && presCount === 0) ? 'course' : 'presence';
+        if (dateStr) this.options.onInspectDateClick(dateStr, preferredType);
       });
     });
   }
