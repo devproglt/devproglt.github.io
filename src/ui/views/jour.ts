@@ -62,6 +62,7 @@ export class JourView {
           <td><strong>${this.escapeHtml(yr)}</strong></td>
           <td>${counts.girls}</td>
           <td>${counts.boys}</td>
+          <td>${counts.internals}</td>
           <td><strong>${counts.total}</strong></td>
         </tr>
       `
@@ -90,9 +91,10 @@ export class JourView {
             </span>
           </div>
 
-          <div style="display: flex; gap: 16px; font-size: var(--font-size-sm); color: var(--text-secondary);">
+          <div style="display: flex; gap: 16px; font-size: var(--font-size-sm); color: var(--text-secondary); flex-wrap: wrap;">
             <div>Filles : <strong style="color: #db2777;">${summary.girls}</strong></div>
             <div>Garçons : <strong style="color: #0284c7;">${summary.boys}</strong></div>
+            <div>Internes : <strong style="color: #10b981;">${summary.internals}</strong></div>
           </div>
 
           ${Object.keys(summary.byYear).length > 0 ? `
@@ -102,6 +104,7 @@ export class JourView {
                   <th>Année</th>
                   <th>Filles</th>
                   <th>Garçons</th>
+                  <th>Internes</th>
                   <th>Total</th>
                 </tr>
               </thead>
@@ -165,10 +168,10 @@ export class JourView {
     if (copyBtn) {
       copyBtn.addEventListener('click', () => {
         let text = `Résumé des ${this.activeTab === 'presence' ? 'présences' : 'courses'} — ${formatReadableDate(this.options.date)}\n`;
-        text += `Total: ${summary.total} (Filles: ${summary.girls}, Garçons: ${summary.boys})\n\n`;
+        text += `Total: ${summary.total} (Filles: ${summary.girls}, Garçons: ${summary.boys}, Internes: ${summary.internals})\n\n`;
         text += `Répartition par année:\n`;
         for (const [yr, counts] of Object.entries(summary.byYear)) {
-          text += `- ${yr}: ${counts.total} (F: ${counts.girls}, G: ${counts.boys})\n`;
+          text += `- ${yr}: ${counts.total} (F: ${counts.girls}, G: ${counts.boys}, I: ${counts.internals})\n`;
         }
         navigator.clipboard.writeText(text);
         showToast(STRINGS.actions.copiedSuccess);

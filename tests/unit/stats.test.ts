@@ -23,6 +23,19 @@ describe('Domain: stats', () => {
     expect(summary.byYear['1A'].total).toBe(2);
   });
 
+  it('calcule correctement le résumé du jour pour les présences avec internes', () => {
+    const studentsWithIntern = new Map<string, StudentInfo>([
+      ['s1', { id: 's1', gender: 'F', year: '1A', active: true, isInternal: true }],
+      ['s2', { id: 's2', gender: 'M', year: '1A', active: true, isInternal: false }],
+    ]);
+    const summary = calculateDaySummary(mockAttendances, studentsWithIntern, 'presence');
+    expect(summary.total).toBe(2);
+    expect(summary.girls).toBe(1);
+    expect(summary.boys).toBe(1);
+    expect(summary.internals).toBe(1);
+    expect(summary.byYear['1A'].internals).toBe(1);
+  });
+
   it('calcule correctement la synthèse par élève', () => {
     const statsMap = calculateAllStudentStats(mockAttendances);
     expect(statsMap.get('s1')?.presences).toBe(1);

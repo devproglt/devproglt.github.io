@@ -8,6 +8,7 @@ export interface CreateStudentInput {
   lastName: string;
   gender: 'F' | 'M';
   year: string;
+  isInternal?: boolean;
   notes?: string;
   active?: boolean;
 }
@@ -18,6 +19,7 @@ export interface UpdateStudentInput {
   lastName?: string;
   gender?: 'F' | 'M';
   year?: string;
+  isInternal?: boolean;
   notes?: string;
   active?: boolean;
 }
@@ -38,6 +40,7 @@ export async function createStudent(input: CreateStudentInput): Promise<StudentR
     gender: input.gender,
     year: input.year.trim(),
     active: input.active !== undefined ? input.active : true,
+    isInternal: input.isInternal !== undefined ? input.isInternal : false,
     notes: (input.notes || '').trim(),
     createdAt: new Date(now).toISOString(),
     updatedAt: now,
@@ -68,6 +71,7 @@ export async function updateStudent(input: UpdateStudentInput): Promise<StudentR
     lastName,
     gender: input.gender !== undefined ? input.gender : existing.gender,
     year: input.year !== undefined ? input.year.trim() : existing.year,
+    isInternal: input.isInternal !== undefined ? input.isInternal : (existing.isInternal || false),
     notes: input.notes !== undefined ? input.notes.trim() : existing.notes,
     active: input.active !== undefined ? input.active : existing.active,
     updatedAt: now,
@@ -80,7 +84,7 @@ export async function updateStudent(input: UpdateStudentInput): Promise<StudentR
 }
 
 /**
- * Désactive un élève (désactivation logique au lieu de suppression physique).
+ * Désactive ou réactive un élève.
  */
 export async function toggleStudentActive(id: string, active: boolean): Promise<void> {
   const now = Date.now();
@@ -88,6 +92,27 @@ export async function toggleStudentActive(id: string, active: boolean): Promise<
     active,
     updatedAt: now,
     dirty: 1,
+  });
+}
+
+/**
+ * Supprime définitivement un élève et tous ses pointages associés.
+ */
+export async function deleteStudentPermanently(id: string): Promise<void> {
+  await db.transaction('rw', [db.students, db.attendances], async () => {
+    await db.students.delete(id);
+    await db.attendances.where('studentId').equals(id).delete();
+  });
+}
+
+/**
+ * Supprime l'ensemble des élèves et tous les pointages (Remise à zéro complète).
+ */
+export async function clearAllStudentsAndData(): Promise<void> {
+  await db.transaction('rw', [db.students, db.attendances, db.importLog], async () => {
+    await db.students.clear();
+    await db.attendances.clear();
+    await db.importLog.clear();
   });
 }
 
@@ -106,13 +131,13 @@ export async function getAllStudents(): Promise<StudentRecord[]> {
 }
 
 /**
- * Filtre les élèves selon la recherche, les années sélectionnées, l'initiale du prénom et le statut actif.
+ * Filtre les élèves selon la recherche, les années sélectionnées et le statut actif.
  */
 export interface FilterStudentsOptions {
   query?: string;
-  years?: string[]; // Si vide ou contient 'all', pas de filtre par année
-  initialLetter?: string; // Lettre majuscule A-Z
+  years?: string[];
   onlyActive?: boolean;
+  initialLetter?: string;
 }
 
 export async function getFilteredStudents(options: FilterStudentsOptions = {}): Promise<StudentRecord[]> {
@@ -123,8 +148,11 @@ export async function getFilteredStudents(options: FilterStudentsOptions = {}): 
   }
 
   if (options.years && options.years.length > 0 && !options.years.includes('all')) {
-    const setYears = new Set(options.years);
-    all = all.filter((s) => setYears.has(s.year));
+    const selectedLevels = options.years;
+    all = all.filter((s) => {
+      const yr = s.year.trim();
+      return selectedLevels.some((lvl) => yr === lvl || yr.startsWith(lvl));
+    });
   }
 
   if (options.query && options.query.trim()) {
@@ -133,14 +161,14 @@ export async function getFilteredStudents(options: FilterStudentsOptions = {}): 
   }
 
   if (options.initialLetter && options.initialLetter !== 'ALL') {
-    const letter = normalizeText(options.initialLetter);
+    const initial = options.initialLetter.toUpperCase();
     all = all.filter((s) => {
-      const fnNorm = normalizeText(s.firstName);
-      return fnNorm.startsWith(letter);
+      const fn = normalizeText(s.firstName).toUpperCase();
+      const ln = normalizeText(s.lastName).toUpperCase();
+      return fn.startsWith(initial) || ln.startsWith(initial);
     });
   }
 
-  // Tri par prénom puis par nom
   return all.sort((a, b) => {
     const fnComp = a.firstName.localeCompare(b.firstName, 'fr', { sensitivity: 'base' });
     if (fnComp !== 0) return fnComp;
@@ -149,7 +177,7 @@ export async function getFilteredStudents(options: FilterStudentsOptions = {}): 
 }
 
 /**
- * Vérifie si un doublon probable existe déjà (même prénom, nom et année normalisés).
+ * Vérifie si un doublon probable existe déjà.
  */
 export async function checkProbableDuplicate(
   firstName: string,

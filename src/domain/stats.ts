@@ -10,7 +10,8 @@ export interface DaySummary {
   total: number;
   girls: number;
   boys: number;
-  byYear: Record<string, { girls: number; boys: number; total: number }>;
+  internals: number;
+  byYear: Record<string, { girls: number; boys: number; internals: number; total: number }>;
 }
 
 export interface StudentInfo {
@@ -18,6 +19,7 @@ export interface StudentInfo {
   gender: 'F' | 'M';
   year: string;
   active: boolean;
+  isInternal?: boolean;
 }
 
 export interface AttendanceRecord {
@@ -43,7 +45,8 @@ export function calculateDaySummary(
   let total = 0;
   let girls = 0;
   let boys = 0;
-  const byYear: Record<string, { girls: number; boys: number; total: number }> = {};
+  let internals = 0;
+  const byYear: Record<string, { girls: number; boys: number; internals: number; total: number }> = {};
 
   for (const att of attendances) {
     if (!att.present) continue;
@@ -59,9 +62,13 @@ export function calculateDaySummary(
       boys++;
     }
 
+    if (student.isInternal) {
+      internals++;
+    }
+
     const yr = student.year || 'Non spécifiée';
     if (!byYear[yr]) {
-      byYear[yr] = { girls: 0, boys: 0, total: 0 };
+      byYear[yr] = { girls: 0, boys: 0, internals: 0, total: 0 };
     }
     byYear[yr].total++;
     if (student.gender === 'F') {
@@ -69,9 +76,12 @@ export function calculateDaySummary(
     } else if (student.gender === 'M') {
       byYear[yr].boys++;
     }
+    if (student.isInternal) {
+      byYear[yr].internals++;
+    }
   }
 
-  return { total, girls, boys, byYear };
+  return { total, girls, boys, internals, byYear };
 }
 
 /**

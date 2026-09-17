@@ -1,18 +1,19 @@
 import { STRINGS } from '../strings';
-import { renderAZBar, setupAZBarEvents } from '../components/az-bar';
 import { renderYearChips, setupYearChipsEvents } from '../components/chips';
+import { renderAZBar, setupAZBarEvents, computeAvailableLetters } from '../components/az-bar';
 import { renderSegmentedToggle, setupSegmentedToggleEvents } from '../components/toggle';
 import { showToast } from '../components/toast';
+import { openImportMappingModal } from '../components/import-modal';
 import {
   getFilteredStudents,
   createStudent,
   updateStudent,
+  deleteStudentPermanently,
   checkProbableDuplicate,
   getStudentById,
   type StudentRecord,
 } from '../../db/students';
 import { getYearsList, addYearIfMissing } from '../../db/meta';
-import { normalizeText } from '../../domain/normalize';
 
 export interface ElevesViewOptions {
   onStudentCardClick: (studentId: string) => void;
@@ -29,6 +30,7 @@ export class ElevesView {
   private showInactive = false;
 
   private students: StudentRecord[] = [];
+  private allStudents: StudentRecord[] = [];
   private yearsList: string[] = [];
 
   constructor(container: HTMLElement, options: ElevesViewOptions) {
@@ -43,127 +45,151 @@ export class ElevesView {
   private async loadDataAndRender(): Promise<void> {
     this.yearsList = await getYearsList();
 
-    const allStudentsForLetters = await getFilteredStudents({
+    this.allStudents = await getFilteredStudents({
       onlyActive: !this.showInactive,
     });
-
-    const availableLetters = new Set<string>();
-    for (const s of allStudentsForLetters) {
-      const fnNorm = normalizeText(s.firstName);
-      if (fnNorm.length > 0) {
-        availableLetters.add(fnNorm.charAt(0).toUpperCase());
-      }
-    }
 
     this.students = await getFilteredStudents({
       query: this.searchQuery,
       years: this.selectedYears,
-      initialLetter: this.selectedLetter,
       onlyActive: !this.showInactive,
+      initialLetter: this.selectedLetter,
     });
+
+    const availableLetters = computeAvailableLetters(
+      this.selectedYears.includes('all')
+        ? this.allStudents
+        : this.allStudents.filter((s) => {
+            const yr = s.year.trim();
+            return this.selectedYears.some((lvl) => yr === lvl || yr.startsWith(lvl));
+          })
+    );
 
     this.container.innerHTML = `
       <div style="padding: 12px 16px; position: relative; min-height: 100%;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-          <h2>${STRINGS.nav.eleves} (${this.students.length})</h2>
-          <button class="btn btn-primary" id="eleves-add-btn">
-            + ${STRINGS.actions.addStudent}
-          </button>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
+          <h2 id="eleves-title">${STRINGS.nav.eleves} (${this.students.length})</h2>
+          <div style="display: flex; gap: 8px;">
+            <label class="btn btn-secondary" style="min-height: 38px; padding: 0 10px; font-size: 0.8rem; cursor: pointer;">
+              📂 Importer Excel
+              <input type="file" id="eleves-import-file" accept=".xlsx, .xls, .csv" style="display: none;" />
+            </label>
+            <button class="btn btn-primary" id="eleves-add-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
+              + ${STRINGS.actions.add}
+            </button>
+          </div>
         </div>
 
         <div class="filter-section">
           <div class="search-bar">
-            <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 14z"/></svg>
             <input type="text" id="eleves-search" class="search-input" placeholder="${STRINGS.header.searchPlaceholder}" value="${this.escapeHtml(this.searchQuery)}" />
-            ${this.searchQuery ? `<button class="clear-search-btn" id="eleves-clear-search">✕</button>` : ''}
+            <button class="clear-search-btn" id="eleves-clear-search" style="display: ${this.searchQuery ? 'flex' : 'none'};">✕</button>
           </div>
 
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px;">
-            <div>${renderYearChips(this.yearsList, this.selectedYears)}</div>
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px; gap: 8px;">
+            <div id="eleves-year-chips" style="flex: 1; overflow: hidden;">${renderYearChips(this.yearsList, this.selectedYears)}</div>
             <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; white-space: nowrap;">
               <input type="checkbox" id="eleves-show-inactive" ${this.showInactive ? 'checked' : ''} />
               ${STRINGS.header.includeInactive}
             </label>
           </div>
 
-          <div>${renderAZBar(availableLetters, this.selectedLetter)}</div>
+          <div id="eleves-az-bar">${renderAZBar(availableLetters, this.selectedLetter)}</div>
         </div>
 
-        <div class="student-list" style="margin-top: 12px; padding: 0;">
-          ${this.students.length === 0 ? `
-            <div style="text-align: center; padding: 32px; color: var(--text-muted);">
-              Aucun élève trouvé.
-            </div>
-          ` : this.students.map((student) => `
-            <div class="student-card" data-student-id="${student.id}">
-              <div class="student-info">
-                <div class="student-name" style="${!student.active ? 'text-decoration: line-through; opacity: 0.6;' : ''}">
-                  ${this.escapeHtml(student.firstName)} ${this.escapeHtml(student.lastName)}
-                  ${!student.active ? ' <span style="font-size: 0.75rem; color: var(--color-danger);">(Inactif)</span>' : ''}
-                </div>
-                <div class="student-meta">
-                  <span class="badge-year">${this.escapeHtml(student.year)}</span>
-                  <span class="badge-gender ${student.gender}">${student.gender === 'F' ? 'Fille' : 'Garçon'}</span>
-                  ${student.notes ? `<span style="color: var(--text-muted); font-size: 0.75rem;">📝 ${this.escapeHtml(student.notes)}</span>` : ''}
-                </div>
-              </div>
-              <button class="btn btn-secondary eleves-edit-btn" data-student-id="${student.id}" style="min-height: 38px; padding: 0 10px; font-size: 0.8rem;">
-                ${STRINGS.actions.edit}
-              </button>
-            </div>
-          `).join('')}
+        <div class="student-list" id="eleves-student-list" style="margin-top: 12px; padding: 0;">
+          ${this.renderStudentListHtml()}
         </div>
       </div>
 
-      <!-- Zone Modale Formulaire -->
       <div id="eleves-modal-container"></div>
     `;
 
     this.attachEvents();
   }
 
-  private attachEvents(): void {
-    const searchInput = this.container.querySelector<HTMLInputElement>('#eleves-search');
-    if (searchInput) {
-      searchInput.addEventListener('input', () => {
-        this.searchQuery = searchInput.value;
-        this.loadDataAndRender();
-      });
+  private renderStudentListHtml(): string {
+    if (this.students.length === 0) {
+      return `
+        <div style="text-align: center; padding: 32px; color: var(--text-muted);">
+          Aucun élève trouvé.
+        </div>
+      `;
     }
 
-    const clearBtn = this.container.querySelector('#eleves-clear-search');
+    return this.students
+      .map(
+        (student) => `
+      <div class="student-card" data-student-id="${student.id}">
+        <div class="student-info">
+          <div class="student-name" style="${!student.active ? 'text-decoration: line-through; opacity: 0.6;' : ''}">
+            ${this.escapeHtml(student.firstName)} ${this.escapeHtml(student.lastName)}
+            ${!student.active ? ' <span style="font-size: 0.75rem; color: var(--color-danger);">(Inactif)</span>' : ''}
+          </div>
+          <div class="student-meta">
+            <span class="badge-year">${this.escapeHtml(student.year)}</span>
+            <span class="badge-gender ${student.gender}">${student.gender === 'F' ? 'Fille' : 'Garçon'}</span>
+            ${student.isInternal ? `<span style="background: var(--bg-surface-hover); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.7rem; font-weight: 600;">🏠 Interne</span>` : ''}
+            ${student.notes ? `<span style="color: var(--text-muted); font-size: 0.75rem;">📝 ${this.escapeHtml(student.notes)}</span>` : ''}
+          </div>
+        </div>
+        <button class="btn btn-secondary eleves-edit-btn" data-student-id="${student.id}" style="min-height: 38px; padding: 0 10px; font-size: 0.8rem;">
+          ${STRINGS.actions.edit}
+        </button>
+      </div>
+    `
+      )
+      .join('');
+  }
+
+  private async updateFilteredListOnly(): Promise<void> {
+    this.allStudents = await getFilteredStudents({
+      onlyActive: !this.showInactive,
+    });
+
+    this.students = await getFilteredStudents({
+      query: this.searchQuery,
+      years: this.selectedYears,
+      onlyActive: !this.showInactive,
+      initialLetter: this.selectedLetter,
+    });
+
+    const listContainer = this.container.querySelector('#eleves-student-list');
+    if (listContainer) {
+      listContainer.innerHTML = this.renderStudentListHtml();
+      this.attachCardEventsOnly();
+    }
+
+    const titleEl = this.container.querySelector('#eleves-title');
+    if (titleEl) {
+      titleEl.textContent = `${STRINGS.nav.eleves} (${this.students.length})`;
+    }
+
+    const clearBtn = this.container.querySelector<HTMLElement>('#eleves-clear-search');
     if (clearBtn) {
-      clearBtn.addEventListener('click', () => {
-        this.searchQuery = '';
-        this.loadDataAndRender();
-      });
+      clearBtn.style.display = this.searchQuery ? 'flex' : 'none';
     }
 
-    const inactiveCheckbox = this.container.querySelector<HTMLInputElement>('#eleves-show-inactive');
-    if (inactiveCheckbox) {
-      inactiveCheckbox.addEventListener('change', () => {
-        this.showInactive = inactiveCheckbox.checked;
-        this.loadDataAndRender();
+    const azBarContainer = this.container.querySelector('#eleves-az-bar');
+    if (azBarContainer) {
+      const availableLetters = computeAvailableLetters(
+        this.selectedYears.includes('all')
+          ? this.allStudents
+          : this.allStudents.filter((s) => {
+              const yr = s.year.trim();
+              return this.selectedYears.some((lvl) => yr === lvl || yr.startsWith(lvl));
+            })
+      );
+      azBarContainer.innerHTML = renderAZBar(availableLetters, this.selectedLetter);
+      setupAZBarEvents(this.container, (letter) => {
+        this.selectedLetter = letter;
+        this.updateFilteredListOnly();
       });
     }
+  }
 
-    setupYearChipsEvents(this.container, this.selectedYears, (years) => {
-      this.selectedYears = years;
-      this.loadDataAndRender();
-    });
-
-    setupAZBarEvents(this.container, (letter) => {
-      this.selectedLetter = letter;
-      this.loadDataAndRender();
-    });
-
-    const addBtn = this.container.querySelector('#eleves-add-btn');
-    if (addBtn) {
-      addBtn.addEventListener('click', () => {
-        this.openStudentModal();
-      });
-    }
-
+  private attachCardEventsOnly(): void {
     const editBtns = this.container.querySelectorAll<HTMLButtonElement>('.eleves-edit-btn');
     editBtns.forEach((btn) => {
       btn.addEventListener('click', async (e) => {
@@ -189,6 +215,78 @@ export class ElevesView {
     });
   }
 
+  private attachEvents(): void {
+    const searchInput = this.container.querySelector<HTMLInputElement>('#eleves-search');
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        this.searchQuery = searchInput.value;
+        this.updateFilteredListOnly();
+      });
+    }
+
+    const clearBtn = this.container.querySelector('#eleves-clear-search');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        this.searchQuery = '';
+        if (searchInput) searchInput.value = '';
+        this.updateFilteredListOnly();
+      });
+    }
+
+    const inactiveCheckbox = this.container.querySelector<HTMLInputElement>('#eleves-show-inactive');
+    if (inactiveCheckbox) {
+      inactiveCheckbox.addEventListener('change', () => {
+        this.showInactive = inactiveCheckbox.checked;
+        this.updateFilteredListOnly();
+      });
+    }
+
+    setupYearChipsEvents(
+      this.container,
+      () => this.selectedYears,
+      (years) => {
+        this.selectedYears = years;
+        this.updateFilteredListOnly();
+      }
+    );
+
+    setupAZBarEvents(this.container, (letter) => {
+      this.selectedLetter = letter;
+      this.updateFilteredListOnly();
+    });
+
+    const addBtn = this.container.querySelector('#eleves-add-btn');
+    if (addBtn) {
+      addBtn.addEventListener('click', () => {
+        this.openStudentModal();
+      });
+    }
+
+    const importFileInput = this.container.querySelector<HTMLInputElement>('#eleves-import-file');
+    if (importFileInput) {
+      importFileInput.addEventListener('change', () => {
+        const file = importFileInput.files?.[0];
+        if (!file) return;
+
+        openImportMappingModal({
+          file,
+          onSuccess: async () => {
+            this.searchQuery = '';
+            this.selectedYears = ['all'];
+            this.selectedLetter = 'ALL';
+            await this.loadDataAndRender();
+            this.options.onRefreshNeeded();
+          },
+          onClose: () => {
+            importFileInput.value = '';
+          },
+        });
+      });
+    }
+
+    this.attachCardEventsOnly();
+  }
+
   private async openStudentModal(student?: StudentRecord): Promise<void> {
     const isEdit = Boolean(student);
     const modalContainer = this.container.querySelector('#eleves-modal-container');
@@ -203,7 +301,7 @@ export class ElevesView {
             <h3 style="font-size: var(--font-size-lg); font-weight: 700;">
               ${isEdit ? STRINGS.actions.edit : STRINGS.actions.addStudent}
             </h3>
-            <button class="btn btn-secondary" id="modal-close-btn" style="min-height: 36px; padding: 0 10px;">✕</button>
+            <button type="button" class="btn btn-secondary" id="modal-close-btn" style="min-height: 36px; padding: 0 10px;">✕</button>
           </div>
 
           <form id="student-form" style="display: flex; flex-direction: column; gap: 14px;">
@@ -255,6 +353,13 @@ export class ElevesView {
               </select>
             </div>
 
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="form-internal-checkbox" ${student?.isInternal ? 'checked' : ''} />
+              <label for="form-internal-checkbox" style="font-size: var(--font-size-sm); font-weight: 600;">
+                Élève Interne (EstInterne)
+              </label>
+            </div>
+
             <div>
               <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
                 ${STRINGS.student.notes}
@@ -271,11 +376,16 @@ export class ElevesView {
               </div>
             ` : ''}
 
-            <div style="display: flex; gap: 10px; margin-top: 12px;">
-              <button type="button" class="btn btn-secondary" id="form-cancel-btn" style="flex: 1;">
+            <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+              ${isEdit ? `
+                <button type="button" class="btn btn-danger" id="form-delete-student-btn" style="flex: 1; min-height: 42px;">
+                  🗑️ Supprimer
+                </button>
+              ` : ''}
+              <button type="button" class="btn btn-secondary" id="form-cancel-btn" style="flex: 1; min-height: 42px;">
                 ${STRINGS.actions.cancel}
               </button>
-              <button type="submit" class="btn btn-primary" style="flex: 1;">
+              <button type="submit" class="btn btn-primary" style="flex: 1.5; min-height: 42px;">
                 ${STRINGS.actions.save}
               </button>
             </div>
@@ -301,6 +411,19 @@ export class ElevesView {
     const cancelBtn = modalContainer.querySelector('#form-cancel-btn');
     if (cancelBtn) cancelBtn.addEventListener('click', closeOverlay);
 
+    const deleteBtn = modalContainer.querySelector('#form-delete-student-btn');
+    if (deleteBtn && student) {
+      deleteBtn.addEventListener('click', async () => {
+        if (confirm(`Êtes-vous sûr de vouloir supprimer définitivement l'élève ${student.firstName} ${student.lastName} ainsi que tous ses pointages ?`)) {
+          await deleteStudentPermanently(student.id);
+          showToast(`Élève ${student.firstName} ${student.lastName} supprimé.`);
+          closeOverlay();
+          await this.loadDataAndRender();
+          this.options.onRefreshNeeded();
+        }
+      });
+    }
+
     const genderContainer = modalContainer.querySelector('#form-gender-toggle') as HTMLElement;
     if (genderContainer) {
       setupSegmentedToggleEvents(genderContainer, (val) => {
@@ -308,7 +431,6 @@ export class ElevesView {
       });
     }
 
-    // Détection en direct des doublons probables
     const firstNameInput = modalContainer.querySelector<HTMLInputElement>('#form-first-name');
     const lastNameInput = modalContainer.querySelector<HTMLInputElement>('#form-last-name');
     const yearSelect = modalContainer.querySelector<HTMLSelectElement>('#form-year-select');
@@ -329,7 +451,6 @@ export class ElevesView {
     if (lastNameInput) lastNameInput.addEventListener('input', checkDuplicates);
     if (yearSelect) yearSelect.addEventListener('change', checkDuplicates);
 
-    // Enregistrement
     const form = modalContainer.querySelector<HTMLFormElement>('#student-form');
     if (form) {
       form.addEventListener('submit', async (e) => {
@@ -339,6 +460,7 @@ export class ElevesView {
         const firstName = firstNameInput.value.trim();
         const lastName = lastNameInput.value.trim();
         const year = yearSelect.value.trim();
+        const isInternal = modalContainer.querySelector<HTMLInputElement>('#form-internal-checkbox')?.checked ?? false;
         const notes = (modalContainer.querySelector<HTMLTextAreaElement>('#form-notes')?.value || '').trim();
         const active = isEdit
           ? modalContainer.querySelector<HTMLInputElement>('#form-active-checkbox')?.checked ?? true
@@ -358,6 +480,7 @@ export class ElevesView {
             lastName,
             gender: selectedGender,
             year,
+            isInternal,
             notes,
             active,
           });
@@ -368,6 +491,7 @@ export class ElevesView {
             lastName,
             gender: selectedGender,
             year,
+            isInternal,
             notes,
             active: true,
           });

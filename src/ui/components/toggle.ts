@@ -1,5 +1,5 @@
 /**
- * Bascule segmentée réutilisable (ex: Présence / Course, F / M).
+ * Bascule segmentée réutilisable (ex: Entraînement / Course, F / M).
  */
 
 export interface ToggleOption {
@@ -15,7 +15,7 @@ export function renderSegmentedToggle(
   const optionsHtml = options
     .map(
       (opt) => `
-    <button class="segmented-option ${opt.value === selectedValue ? 'active' : ''}" data-value="${opt.value}">
+    <button type="button" class="segmented-option ${opt.value === selectedValue ? 'active' : ''}" data-value="${opt.value}">
       ${opt.label}
     </button>
   `
@@ -35,9 +35,14 @@ export function setupSegmentedToggleEvents(
 ): void {
   const buttons = container.querySelectorAll<HTMLButtonElement>('.segmented-option');
   buttons.forEach((btn) => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       const val = btn.dataset.value;
       if (val) {
+        // Mettre à jour la classe active visuellement
+        buttons.forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
         onSelect(val);
       }
     });

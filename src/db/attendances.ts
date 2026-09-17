@@ -85,3 +85,10 @@ export async function markAttendancesSynced(ids: string[]): Promise<void> {
     }
   });
 }
+
+/**
+ * Supprime l'ensemble des pointages (remise à zéro des présences).
+ */
+export async function clearAllAttendances(): Promise<void> {
+  await db.attendances.clear();
+}

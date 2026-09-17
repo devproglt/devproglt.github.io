@@ -1,6 +1,6 @@
 import { STRINGS } from '../strings';
 import { showToast } from '../components/toast';
-import { getStudentById, updateStudent, type StudentRecord } from '../../db/students';
+import { getStudentById, updateStudent, deleteStudentPermanently, type StudentRecord } from '../../db/students';
 import { getAttendancesByStudent } from '../../db/attendances';
 import { formatTimeBrussels, formatReadableDate } from '../../domain/dates';
 
@@ -64,13 +64,18 @@ export class FicheView {
 
     this.container.innerHTML = `
       <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
-        <div style="display: flex; items-center; justify-content: space-between;">
+        <div style="display: flex; items-center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
           <button class="btn btn-secondary" id="fiche-back-btn" style="min-height: 38px; padding: 0 12px;">
             ← Retour
           </button>
-          <button class="btn btn-primary" id="fiche-toggle-active-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem; background-color: ${student.active ? 'var(--color-danger)' : 'var(--accent-active)'}">
-            ${student.active ? 'Désactiver l\'élève' : 'Réactiver l\'élève'}
-          </button>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary" id="fiche-toggle-active-btn" style="min-height: 38px; padding: 0 10px; font-size: 0.8rem;">
+              ${student.active ? 'Désactiver' : 'Réactiver'}
+            </button>
+            <button class="btn btn-danger" id="fiche-delete-btn" style="min-height: 38px; padding: 0 10px; font-size: 0.8rem;">
+              🗑️ Supprimer
+            </button>
+          </div>
         </div>
 
         <!-- En-tête Identité -->
@@ -80,9 +85,10 @@ export class FicheView {
               <h2 style="font-size: var(--font-size-xl); font-weight: 700;">
                 ${this.escapeHtml(student.firstName)} ${this.escapeHtml(student.lastName)}
               </h2>
-              <div style="display: flex; gap: 8px; margin-top: 6px; align-items: center;">
+              <div style="display: flex; gap: 8px; margin-top: 6px; align-items: center; flex-wrap: wrap;">
                 <span class="badge-year">${this.escapeHtml(student.year)}</span>
                 <span class="badge-gender ${student.gender}">${student.gender === 'F' ? 'Fille' : 'Garçon'}</span>
+                ${student.isInternal ? `<span style="background: var(--bg-surface-hover); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: 600;">🏠 Interne</span>` : ''}
                 <span style="font-size: var(--font-size-xs); font-weight: 600; color: ${student.active ? 'var(--color-success)' : 'var(--color-danger)'}">
                   ${student.active ? '• Actif' : '• Inactif'}
                 </span>
@@ -124,7 +130,7 @@ export class FicheView {
             <h3 style="font-size: var(--font-size-base);">${STRINGS.nav.historique} (${filteredList.length})</h3>
             <select id="fiche-type-filter" class="search-input" style="width: auto; min-height: 36px; padding: 0 8px; font-size: 0.8rem;">
               <option value="all" ${this.typeFilter === 'all' ? 'selected' : ''}>Tous les types</option>
-              <option value="presence" ${this.typeFilter === 'presence' ? 'selected' : ''}>Présences</option>
+              <option value="presence" ${this.typeFilter === 'presence' ? 'selected' : ''}>Entraînements</option>
               <option value="course" ${this.typeFilter === 'course' ? 'selected' : ''}>Courses</option>
             </select>
           </div>
@@ -173,6 +179,19 @@ export class FicheView {
         showToast(newActiveState ? 'Élève réactivé.' : 'Élève désactivé.');
         await this.loadDataAndRender();
         this.options.onRefreshNeeded();
+      });
+    }
+
+    const deleteBtn = this.container.querySelector('#fiche-delete-btn');
+    if (deleteBtn && this.student) {
+      deleteBtn.addEventListener('click', async () => {
+        if (!this.student) return;
+        if (confirm(`Êtes-vous sûr de vouloir supprimer définitivement ${this.student.firstName} ${this.student.lastName} ainsi que tous ses pointages ?`)) {
+          await deleteStudentPermanently(this.student.id);
+          showToast(`Élève ${this.student.firstName} ${this.student.lastName} supprimé.`);
+          this.options.onBack();
+          this.options.onRefreshNeeded();
+        }
       });
     }
 

@@ -7,6 +7,7 @@ export interface StudentRecord {
   gender: 'F' | 'M';
   year: string;
   active: boolean; // faux = désactivé
+  isInternal: boolean; // EstInterne
   notes: string;
   createdAt: string; // ISO 8601
   updatedAt: number; // ms epoch
@@ -49,7 +50,7 @@ export class PresencesDatabase extends Dexie {
   constructor() {
     super('PresencesDB');
     this.version(1).stores({
-      students: 'id, lastName, firstName, year, gender, active, dirty, searchKey',
+      students: 'id, lastName, firstName, year, gender, active, isInternal, dirty, searchKey',
       attendances: 'id, studentId, date, type, [date+type], [studentId+date], dirty',
       meta: 'key',
       importLog: 'id, date',

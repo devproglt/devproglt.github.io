@@ -16,7 +16,7 @@ export const STRINGS = {
 
   // Types de présence
   types: {
-    presence: 'Présence',
+    presence: 'Entraînement',
     course: 'Course',
   },
 
@@ -65,7 +65,7 @@ export const STRINGS = {
     active: 'Actif',
     inactive: 'Inactif',
     notes: 'Remarques / Notes',
-    presencesCount: 'Présences',
+    presencesCount: 'Entraînements',
     coursesCount: 'Courses',
     totalCount: 'Total participations',
     lastSeen: 'Dernière venue',

@@ -3,6 +3,15 @@
  * Déploiement : Web App (Exécuté en tant que Moi, Accès Tout le monde).
  */
 
+function doGet(e) {
+  return jsonResponse({
+    ok: true,
+    status: 'online',
+    message: 'Backend Google Apps Script opérationnel pour l\'application Prise de Présences.',
+    timestamp: new Date().toISOString()
+  });
+}
+
 function doPost(e) {
   try {
     const postData = e.postData.contents;
@@ -118,7 +127,7 @@ function handlePull(ss, request) {
   // Ligne 1 = en-têtes
   for (let i = 1; i < studentValues.length; i++) {
     const row = studentValues[i];
-    const seq = parseInt(row[9] || 0, 10);
+    const seq = parseInt(row[10] || row[9] || 0, 10);
     if (seq > since) {
       pulledStudents.push({
         id: String(row[0]),
@@ -130,6 +139,7 @@ function handlePull(ss, request) {
         notes: String(row[6] || ''),
         createdAt: String(row[7]),
         updatedAt: parseInt(row[8] || 0, 10),
+        isInternal: Boolean(row[9]),
       });
     }
   }
@@ -175,11 +185,11 @@ function buildIdMap(sheet) {
 }
 
 function appendStudentRow(sheet, s, seq) {
-  sheet.appendRow([s.id, s.lastName, s.firstName, s.gender, s.year, s.active, s.notes || '', s.createdAt, s.updatedAt, seq]);
+  sheet.appendRow([s.id, s.lastName, s.firstName, s.gender, s.year, s.active, s.notes || '', s.createdAt, s.updatedAt, s.isInternal ? true : false, seq]);
 }
 
 function updateStudentRow(sheet, rowIdx, s, seq) {
-  sheet.getRange(rowIdx, 1, 1, 10).setValues([[s.id, s.lastName, s.firstName, s.gender, s.year, s.active, s.notes || '', s.createdAt, s.updatedAt, seq]]);
+  sheet.getRange(rowIdx, 1, 1, 11).setValues([[s.id, s.lastName, s.firstName, s.gender, s.year, s.active, s.notes || '', s.createdAt, s.updatedAt, s.isInternal ? true : false, seq]]);
 }
 
 function appendAttendanceRow(sheet, a, seq) {
@@ -195,7 +205,7 @@ function getOrCreateSheet(ss, name) {
   if (!sheet) {
     sheet = ss.insertSheet(name);
     if (name === 'students') {
-      sheet.appendRow(['id', 'lastName', 'firstName', 'gender', 'year', 'active', 'notes', 'createdAt', 'updatedAt', 'seq']);
+      sheet.appendRow(['id', 'lastName', 'firstName', 'gender', 'year', 'active', 'notes', 'createdAt', 'updatedAt', 'isInternal', 'seq']);
     } else if (name === 'attendances') {
       sheet.appendRow(['id', 'studentId', 'date', 'type', 'present', 'markedAt', 'deviceId', 'updatedAt', 'seq']);
     } else if (name === 'config') {

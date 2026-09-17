@@ -1,5 +1,4 @@
 import { STRINGS } from '../strings';
-import { renderSegmentedToggle, setupSegmentedToggleEvents } from './toggle';
 import { getTodayBrussels } from '../../domain/dates';
 
 export interface HeaderState {
@@ -7,6 +6,8 @@ export interface HeaderState {
   type: 'presence' | 'course';
   syncStatus: 'synced' | 'pending' | 'offline';
   pendingCount: number;
+  daySummary?: { total: number; girls: number; boys: number; internals: number };
+  showTopo?: boolean;
 }
 
 export function applyAccentTheme(type: 'presence' | 'course'): void {
@@ -37,19 +38,13 @@ export function renderHeader(state: HeaderState): string {
     syncClass = 'offline';
   }
 
-  const toggleHtml = renderSegmentedToggle(
-    [
-      { value: 'presence', label: STRINGS.types.presence },
-      { value: 'course', label: STRINGS.types.course },
-    ],
-    state.type
-  );
+  const summary = state.daySummary || { total: 0, girls: 0, boys: 0, internals: 0 };
 
   return `
     <header class="app-header">
-      ${isPastDate ? `<div class="past-date-banner">${STRINGS.header.dateWarning}</div>` : ''}
+      ${isPastDate && state.showTopo ? `<div class="past-date-banner">${STRINGS.header.dateWarning}</div>` : ''}
 
-      <div class="header-top">
+      <div class="header-top" style="${state.showTopo ? '' : 'margin-bottom: 0;'}">
         <div class="header-title">
           <span>${STRINGS.appName}</span>
         </div>
@@ -66,10 +61,19 @@ export function renderHeader(state: HeaderState): string {
         </div>
       </div>
 
-      <div style="display: flex; gap: 10px; align-items: center; margin-top: 4px;">
-        <input type="date" id="header-date-input" value="${state.date}" class="search-input" style="min-height: 42px; padding: 4px 10px; width: auto; flex: 1;" />
-        <div style="flex: 1.5;">${toggleHtml}</div>
+      ${state.showTopo ? `
+      <!-- Ligne Date réduite + Topo Total, G, F, I (Prise de présences uniquement) -->
+      <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 4px;">
+        <input type="date" id="header-date-input" value="${state.date}" class="search-input" style="width: 130px; min-height: 38px; padding: 2px 8px; font-size: 0.85rem;" />
+        
+        <div id="header-summary-badge" style="flex: 1; display: flex; align-items: center; justify-content: space-around; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 6px 8px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; gap: 4px;">
+          <span style="color: var(--accent-active); font-size: 0.88rem; font-weight: 800;">Tot: ${summary.total}</span>
+          <span style="color: var(--text-secondary);">G: <strong style="color: #0284c7;">${summary.boys}</strong></span>
+          <span style="color: var(--text-secondary);">F: <strong style="color: #db2777;">${summary.girls}</strong></span>
+          <span style="color: var(--text-secondary);">I: <strong style="color: #10b981;">${summary.internals}</strong></span>
+        </div>
       </div>
+      ` : ''}
     </header>
   `;
 }
@@ -77,7 +81,6 @@ export function renderHeader(state: HeaderState): string {
 export function setupHeaderEvents(
   container: HTMLElement,
   onDateChange: (date: string) => void,
-  onTypeChange: (type: 'presence' | 'course') => void,
   onSyncClick: () => void,
   onSettingsClick: () => void
 ): void {
@@ -89,10 +92,6 @@ export function setupHeaderEvents(
       }
     });
   }
-
-  setupSegmentedToggleEvents(container, (val) => {
-    onTypeChange(val as 'presence' | 'course');
-  });
 
   const syncBtn = container.querySelector('#header-sync-btn');
   if (syncBtn) {

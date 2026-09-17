@@ -1,10 +1,11 @@
 import { STRINGS } from '../strings';
 import { showToast } from '../components/toast';
+import { openImportMappingModal } from '../components/import-modal';
 import { getMeta, setMeta, getDeviceId, getYearsList, setYearsList } from '../../db/meta';
 import { SyncEngine } from '../../sync/engine';
-import { downloadImportTemplate, parseAndPreviewImport, executeImportTransaction, detectColumnMapping, type RawRow, getXLSXModule } from '../../io/import';
-import { getAllStudents, createStudent, type StudentRecord } from '../../db/students';
-import { getAllAttendances } from '../../db/attendances';
+import { downloadImportTemplate } from '../../io/import';
+import { getAllStudents, createStudent, clearAllStudentsAndData, type StudentRecord } from '../../db/students';
+import { getAllAttendances, clearAllAttendances } from '../../db/attendances';
 import { buildAttendanceId } from '../../domain/ids';
 import { db } from '../../db/schema';
 import { getTodayBrussels } from '../../domain/dates';
@@ -97,8 +98,6 @@ export class ParametresView {
               📄 ${STRINGS.actions.downloadTemplate}
             </button>
           </div>
-
-          <div id="param-import-preview-zone"></div>
         </section>
 
         <!-- Gestion des Années Scolaires -->
@@ -149,6 +148,25 @@ export class ParametresView {
             </button>
           </div>
         </section>
+
+        <!-- Zone de Danger : Remise à zéro et nouvelle année scolaire -->
+        <section style="background: var(--bg-surface); border: 1px solid var(--color-danger); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 12px;">
+          <h3 style="font-size: var(--font-size-base); font-weight: 700; color: var(--color-danger);">
+            ⚠️ Zone de Danger (Nouvelle année scolaire / Nettoyage)
+          </h3>
+          <p style="font-size: var(--font-size-xs); color: var(--text-secondary);">
+            Ces actions effacent définitivement les données locales de votre appareil :
+          </p>
+
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <button class="btn btn-secondary" id="param-clear-attendances-btn" style="border-color: var(--color-warning); color: var(--color-warning);">
+              🗑️ Effacer tous les pointages (Garder les élèves)
+            </button>
+            <button class="btn btn-danger" id="param-clear-all-btn">
+              💥 Réinitialiser TOUTE la base de données (Élèves & Présences)
+            </button>
+          </div>
+        </section>
       </div>
     `;
 
@@ -156,7 +174,6 @@ export class ParametresView {
   }
 
   private attachEvents(yearsList: string[]): void {
-    // Enregistrement des paramètres de sync
     const saveSyncBtn = this.container.querySelector('#param-save-sync-btn');
     if (saveSyncBtn) {
       saveSyncBtn.addEventListener('click', async () => {
@@ -173,7 +190,6 @@ export class ParametresView {
       });
     }
 
-    // Synchronisation immédiate
     const syncNowBtn = this.container.querySelector('#param-sync-now-btn');
     if (syncNowBtn) {
       syncNowBtn.addEventListener('click', async () => {
@@ -188,7 +204,6 @@ export class ParametresView {
       });
     }
 
-    // Télécharger le gabarit d'import Excel
     const templateBtn = this.container.querySelector('#param-download-template-btn');
     if (templateBtn) {
       templateBtn.addEventListener('click', async () => {
@@ -196,72 +211,26 @@ export class ParametresView {
       });
     }
 
-    // Traitement de l'import Excel / CSV
+    // Modal interactive de mapping d'importation Excel
     const importFileInput = this.container.querySelector<HTMLInputElement>('#param-import-file');
     if (importFileInput) {
-      importFileInput.addEventListener('change', async () => {
+      importFileInput.addEventListener('change', () => {
         const file = importFileInput.files?.[0];
         if (!file) return;
 
-        try {
-          showToast('Lecture du fichier en cours...');
-          const XLSX = await getXLSXModule();
-          const buffer = await file.arrayBuffer();
-          const workbook = XLSX.read(buffer, { type: 'array' });
-          const firstSheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[firstSheetName];
-          const rawRows: RawRow[] = XLSX.utils.sheet_to_json(worksheet);
-
-          if (rawRows.length === 0) {
-            showToast('Fichier vide ou format non reconnu.');
-            return;
-          }
-
-          const headers = Object.keys(rawRows[0]);
-          const mapping = detectColumnMapping(headers);
-
-          const existingStudents = await getAllStudents();
-          const previewRows = await parseAndPreviewImport(rawRows, mapping, 'ignore', existingStudents);
-
-          // Affichage de l'aperçu
-          const previewZone = this.container.querySelector('#param-import-preview-zone');
-          if (previewZone) {
-            const createCount = previewRows.filter((r) => r.status === 'create').length;
-            const skipCount = previewRows.filter((r) => r.status === 'skip').length;
-            const errorCount = previewRows.filter((r) => r.status === 'error').length;
-
-            previewZone.innerHTML = `
-              <div style="background: var(--bg-surface-hover); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-top: 8px;">
-                <h4 style="font-size: var(--font-size-sm); font-weight: 700; margin-bottom: 6px;">Aperçu de l'importation :</h4>
-                <div style="font-size: var(--font-size-xs); display: flex; gap: 12px;">
-                  <span style="color: var(--color-success);">Nouveaux : <strong>${createCount}</strong></span>
-                  <span style="color: var(--text-muted);">Doublons ignorés : <strong>${skipCount}</strong></span>
-                  <span style="color: var(--color-danger);">Erreurs : <strong>${errorCount}</strong></span>
-                </div>
-                <button class="btn btn-primary" id="confirm-import-btn" style="width: 100%; margin-top: 10px;">
-                  Confirmer et importer ${createCount} élève(s)
-                </button>
-              </div>
-            `;
-
-            const confirmBtn = previewZone.querySelector('#confirm-import-btn');
-            if (confirmBtn) {
-              confirmBtn.addEventListener('click', async () => {
-                const result = await executeImportTransaction(previewRows, file.name);
-                showToast(`Importation terminée : ${result.created} créés, ${result.skipped} ignorés.`);
-                previewZone.innerHTML = '';
-                this.options.onRefreshNeeded();
-              });
-            }
-          }
-        } catch (err) {
-          console.error(err);
-          showToast('Erreur lors de la lecture du fichier.');
-        }
+        openImportMappingModal({
+          file,
+          onSuccess: async () => {
+            await this.loadDataAndRender();
+            this.options.onRefreshNeeded();
+          },
+          onClose: () => {
+            importFileInput.value = '';
+          },
+        });
       });
     }
 
-    // Gestion des années (suppression & ajout)
     const deleteYearBtns = this.container.querySelectorAll<HTMLButtonElement>('.param-delete-year-btn');
     deleteYearBtns.forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -287,7 +256,6 @@ export class ParametresView {
       });
     }
 
-    // Sauvegarde JSON
     const backupBtn = this.container.querySelector('#param-backup-json-btn');
     if (backupBtn) {
       backupBtn.addEventListener('click', async () => {
@@ -310,7 +278,6 @@ export class ParametresView {
       });
     }
 
-    // Restauration JSON
     const restoreInput = this.container.querySelector<HTMLInputElement>('#param-restore-file');
     if (restoreInput) {
       restoreInput.addEventListener('change', async () => {
@@ -339,7 +306,6 @@ export class ParametresView {
       });
     }
 
-    // Génération du jeu de démonstration
     const seedBtn = this.container.querySelector('#param-seed-demo-btn');
     if (seedBtn) {
       seedBtn.addEventListener('click', async () => {
@@ -350,11 +316,37 @@ export class ParametresView {
       });
     }
 
-    // Bouton de mise à jour PWA
     const updateBtn = this.container.querySelector('#param-update-app-btn');
     if (updateBtn) {
       updateBtn.addEventListener('click', () => {
         this.options.onUpdateAppClick();
+      });
+    }
+
+    // Effacer uniquement les pointages
+    const clearAttendancesBtn = this.container.querySelector('#param-clear-attendances-btn');
+    if (clearAttendancesBtn) {
+      clearAttendancesBtn.addEventListener('click', async () => {
+        if (confirm('Voulez-vous vraiment effacer TOUS les pointages de présence et de course ? Les élèves seront conservés.')) {
+          await clearAllAttendances();
+          showToast('Tous les pointages ont été effacés.');
+          this.options.onRefreshNeeded();
+        }
+      });
+    }
+
+    // Réinitialiser toute la base (Élèves & Pointages)
+    const clearAllBtn = this.container.querySelector('#param-clear-all-btn');
+    if (clearAllBtn) {
+      clearAllBtn.addEventListener('click', async () => {
+        if (confirm('ATTENTION : Voulez-vous vraiment TOUT réinitialiser (effacer TOUS les élèves et TOUS les pointages) ?')) {
+          if (confirm('Confirmation finale : cette action est irréversible. Continuer ?')) {
+            await clearAllStudentsAndData();
+            showToast('La base de données a été totalement réinitialisée.');
+            await this.loadDataAndRender();
+            this.options.onRefreshNeeded();
+          }
+        }
       });
     }
   }
@@ -370,7 +362,6 @@ export class ParametresView {
     const now = Date.now();
     const studentsCreated: StudentRecord[] = [];
 
-    // Créer 200 élèves
     await db.transaction('rw', db.students, async () => {
       for (let i = 0; i < 200; i++) {
         const gender: 'F' | 'M' = i % 2 === 0 ? 'F' : 'M';
@@ -384,27 +375,26 @@ export class ParametresView {
           lastName,
           gender,
           year,
+          isInternal: i % 4 === 0,
           active: true,
         });
         studentsCreated.push(student);
       }
     });
 
-    // Générer 3 mois d'historique de présences (environ 30 jours de classe)
     const today = new Date();
     const deviceId = await getDeviceId();
 
     await db.transaction('rw', db.attendances, async () => {
-      for (let d = 0; d < 90; d += 3) { // Tous les 3 jours
+      for (let d = 0; d < 90; d += 3) {
         const targetDate = new Date(today);
         targetDate.setDate(today.getDate() - d);
         const dateStr = targetDate.toISOString().substring(0, 10);
 
-        // Sélectionner 40 élèves au hasard pour chaque jour
         for (let j = 0; j < 40; j++) {
           const student = studentsCreated[Math.floor(Math.random() * studentsCreated.length)];
           const type: 'presence' | 'course' = Math.random() > 0.3 ? 'presence' : 'course';
-          const markedAt = targetDate.getTime() + Math.floor(Math.random() * 28800000); // 8h de plage
+          const markedAt = targetDate.getTime() + Math.floor(Math.random() * 28800000);
 
           const id = buildAttendanceId(student.id, dateStr, type);
           await db.attendances.put({

@@ -8,6 +8,9 @@ import { renderNavbar, setupNavbarEvents } from './ui/components/navbar';
 import { showToast } from './ui/components/toast';
 import { getTodayBrussels } from './domain/dates';
 import { SyncEngine, type SyncStatus } from './sync/engine';
+import { getAttendancesByDateAndType } from './db/attendances';
+import { getAllStudents } from './db/students';
+import { calculateDaySummary } from './domain/stats';
 
 import { PointageView } from './ui/views/pointage';
 import { JourView } from './ui/views/jour';
@@ -29,6 +32,7 @@ class App {
     type: 'presence',
     syncStatus: 'synced',
     pendingCount: 0,
+    daySummary: { total: 0, girls: 0, boys: 0, internals: 0 },
   };
 
   private activeViewInstance: any = null;
@@ -41,6 +45,26 @@ class App {
 
     this.router = new Router();
     this.syncEngine = SyncEngine.getInstance();
+  }
+
+  private async updateDaySummaryHeader(): Promise<void> {
+    try {
+      const [attendances, allStudents] = await Promise.all([
+        getAttendancesByDateAndType(this.headerState.date, this.headerState.type),
+        getAllStudents(),
+      ]);
+      const studentsMap = new Map(allStudents.map((s) => [s.id, s]));
+      const summary = calculateDaySummary(attendances, studentsMap, this.headerState.type);
+      this.headerState.daySummary = {
+        total: summary.total,
+        girls: summary.girls,
+        boys: summary.boys,
+        internals: summary.internals,
+      };
+      this.renderHeaderUI();
+    } catch (err) {
+      console.warn('Erreur lors de la mise à jour du résumé journalier:', err);
+    }
   }
 
   public async init(): Promise<void> {
@@ -58,7 +82,7 @@ class App {
       <div id="header-container"></div>
       <main class="app-content" id="view-container"></main>
       <div id="navbar-container"></div>
-      <div id="sw-update-banner" style="display: none; position: fixed; top: 0; left: 0; right: 0; background: var(--color-warning); color: #fff; padding: 8px 16px; text-align: center; font-size: 0.85rem; z-index: 1000; font-weight: 600; display: flex; justify-content: space-between; align-items: center;">
+      <div id="sw-update-banner" style="display: none; position: fixed; top: 0; left: 0; right: 0; background: var(--color-warning); color: #fff; padding: 8px 16px; text-align: center; font-size: 0.85rem; z-index: 1000; font-weight: 600; justify-content: space-between; align-items: center;">
         <span>Mise à jour disponible !</span>
         <button id="sw-update-btn" class="btn btn-secondary" style="min-height: 32px; padding: 0 10px; font-size: 0.75rem;">
           Mettre à jour
@@ -76,10 +100,13 @@ class App {
     // 4. Configuration des routes
     this.setupRoutes();
 
-    // 5. Enregistrement du Service Worker PWA
+    // 5. Mise à jour initiale du topo header
+    await this.updateDaySummaryHeader();
+
+    // 6. Enregistrement du Service Worker PWA
     this.initServiceWorker();
 
-    // 6. Lancement initial de la synchronisation (push/pull)
+    // 7. Lancement initial de la synchronisation (push/pull)
     this.syncEngine.triggerSync('app_init');
   }
 
@@ -90,20 +117,11 @@ class App {
     headerContainer.innerHTML = renderHeader(this.headerState);
     setupHeaderEvents(
       headerContainer,
-      (date) => {
+      async (date) => {
         this.headerState.date = date;
-        this.renderHeaderUI();
+        await this.updateDaySummaryHeader();
         if (this.activeViewInstance && typeof this.activeViewInstance.updateOptions === 'function') {
           this.activeViewInstance.updateOptions({ ...this.activeViewInstance.options, date });
-        } else if (this.activeViewInstance && typeof this.activeViewInstance.render === 'function') {
-          this.activeViewInstance.render();
-        }
-      },
-      (type) => {
-        this.headerState.type = type;
-        this.renderHeaderUI();
-        if (this.activeViewInstance && typeof this.activeViewInstance.updateOptions === 'function') {
-          this.activeViewInstance.updateOptions({ ...this.activeViewInstance.options, type });
         } else if (this.activeViewInstance && typeof this.activeViewInstance.render === 'function') {
           this.activeViewInstance.render();
         }
@@ -132,14 +150,16 @@ class App {
     const viewContainer = document.getElementById('view-container');
     if (!viewContainer) return;
 
-    const refreshCallback = () => {
+    const refreshCallback = async () => {
       this.syncEngine.scheduleDebouncedSync(10000);
       this.syncEngine.notifyListeners();
+      await this.updateDaySummaryHeader();
     };
 
     // Route Pointage
-    this.router.addRoute('#/pointage', () => {
-      this.renderHeaderUI();
+    this.router.addRoute('#/pointage', async () => {
+      this.headerState.showTopo = true;
+      await this.updateDaySummaryHeader();
       this.renderNavbarUI('#/pointage');
       const pointageView = new PointageView(viewContainer, {
         date: this.headerState.date,
@@ -148,13 +168,18 @@ class App {
           this.router.navigate(`#/fiche?id=${studentId}`);
         },
         onRefreshNeeded: refreshCallback,
+        onTypeChange: async (type) => {
+          this.headerState.type = type;
+          await this.updateDaySummaryHeader();
+        },
       });
       this.activeViewInstance = pointageView;
       pointageView.render();
     });
 
     // Route Jour (Aujourd'hui)
-    this.router.addRoute('#/jour', () => {
+    this.router.addRoute('#/jour', async () => {
+      this.headerState.showTopo = false;
       this.renderHeaderUI();
       this.renderNavbarUI('#/jour');
       const jourView = new JourView(viewContainer, {
@@ -170,7 +195,8 @@ class App {
     });
 
     // Route Élèves
-    this.router.addRoute('#/eleves', () => {
+    this.router.addRoute('#/eleves', async () => {
+      this.headerState.showTopo = false;
       this.renderHeaderUI();
       this.renderNavbarUI('#/eleves');
       const elevesView = new ElevesView(viewContainer, {
@@ -184,7 +210,8 @@ class App {
     });
 
     // Route Fiche élève
-    this.router.addRoute('#/fiche', (_, params) => {
+    this.router.addRoute('#/fiche', async (_, params) => {
+      this.headerState.showTopo = false;
       this.renderHeaderUI();
       this.renderNavbarUI('#/eleves');
       const studentId = params.id || '';
@@ -200,14 +227,15 @@ class App {
     });
 
     // Route Historique
-    this.router.addRoute('#/historique', () => {
+    this.router.addRoute('#/historique', async () => {
+      this.headerState.showTopo = false;
       this.renderHeaderUI();
       this.renderNavbarUI('#/historique');
       const historiqueView = new HistoriqueView(viewContainer, {
         onStudentCardClick: (studentId) => {
           this.router.navigate(`#/fiche?id=${studentId}`);
         },
-        onInspectDateClick: (dateStr) => {
+        onInspectDateClick: async (dateStr) => {
           this.headerState.date = dateStr;
           this.router.navigate('#/jour');
         },
@@ -217,7 +245,8 @@ class App {
     });
 
     // Route Paramètres
-    this.router.addRoute('#/parametres', () => {
+    this.router.addRoute('#/parametres', async () => {
+      this.headerState.showTopo = false;
       this.renderHeaderUI();
       this.renderNavbarUI('#/parametres');
       const parametresView = new ParametresView(viewContainer, {

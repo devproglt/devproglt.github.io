@@ -47,24 +47,46 @@ export async function pushToServer(
     attendances: dirtyAttendances,
   };
 
-  const response = await fetch(syncUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'text/plain;charset=utf-8',
-    },
-    body: JSON.stringify(payload),
-  });
+  try {
+    const response = await fetch(syncUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  if (!response.ok) {
-    throw new Error(`Erreur réseau HTTP ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`Erreur réseau HTTP ${response.status}`);
+    }
+
+    const text = await response.text();
+    let data: PushResponsePayload;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(
+        'Réponse invalide reçue de Google Apps Script. Vérifiez que l\'accès Web App est configuré sur "Tout le monde" (Anyone).'
+      );
+    }
+
+    if (!data.ok) {
+      if (data.error === 'unauthorized') {
+        throw new Error('Jeton de sécurité (Token) incorrect.');
+      }
+      throw new Error(data.error || 'Erreur lors du push serveur');
+    }
+
+    return data;
+  } catch (err: any) {
+    if (err.message && (err.message.includes('fetch') || err.message.includes('Network') || err.message.includes('Failed'))) {
+      throw new Error(
+        'Impossible de contacter Google Sheets. Vérifiez que l\'accès au déploiement Apps Script est réglé sur "Tout le monde" (Anyone) et que l\'URL se termine par /exec.'
+      );
+    }
+    throw err;
   }
-
-  const data: PushResponsePayload = await response.json();
-  if (!data.ok) {
-    throw new Error(data.error || 'Erreur lors du push serveur');
-  }
-
-  return data;
 }
 
 /**
@@ -81,22 +103,44 @@ export async function pullFromServer(
     since: sinceCursor,
   };
 
-  const response = await fetch(syncUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'text/plain;charset=utf-8',
-    },
-    body: JSON.stringify(payload),
-  });
+  try {
+    const response = await fetch(syncUrl, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
+    });
 
-  if (!response.ok) {
-    throw new Error(`Erreur réseau HTTP ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`Erreur réseau HTTP ${response.status}`);
+    }
+
+    const text = await response.text();
+    let data: PullResponsePayload;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error(
+        'Réponse invalide reçue de Google Apps Script. Vérifiez que l\'accès Web App est configuré sur "Tout le monde" (Anyone).'
+      );
+    }
+
+    if (!data.ok) {
+      if (data.error === 'unauthorized') {
+        throw new Error('Jeton de sécurité (Token) incorrect.');
+      }
+      throw new Error(data.error || 'Erreur lors du pull serveur');
+    }
+
+    return data;
+  } catch (err: any) {
+    if (err.message && (err.message.includes('fetch') || err.message.includes('Network') || err.message.includes('Failed'))) {
+      throw new Error(
+        'Impossible de contacter Google Sheets. Vérifiez que l\'accès au déploiement Apps Script est réglé sur "Tout le monde" (Anyone) et que l\'URL se termine par /exec.'
+      );
+    }
+    throw err;
   }
-
-  const data: PullResponsePayload = await response.json();
-  if (!data.ok) {
-    throw new Error(data.error || 'Erreur lors du pull serveur');
-  }
-
-  return data;
 }
