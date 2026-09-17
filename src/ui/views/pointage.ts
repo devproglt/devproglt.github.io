@@ -1,6 +1,6 @@
 import { STRINGS } from '../strings';
 import { renderYearChips, setupYearChipsEvents } from '../components/chips';
-import { renderAZBar, setupAZBarEvents, computeAvailableLetters } from '../components/az-bar';
+import { renderAZBar, setupAZBarEvents, computeAvailableLetters, updateAZBarAvailability } from '../components/az-bar';
 import { renderSegmentedToggle, setupSegmentedToggleEvents } from '../components/toggle';
 import { applyAccentTheme } from '../components/header';
 import { triggerHapticFeedback, showToast } from '../components/toast';
@@ -164,23 +164,15 @@ export class PointageView {
       clearBtn.style.display = this.searchQuery ? 'flex' : 'none';
     }
 
-    // Mettre à jour les lettres actives selon les années sélectionnées
-    const azBarContainer = this.container.querySelector('#pointage-az-bar');
-    if (azBarContainer) {
-      const availableLetters = computeAvailableLetters(
-        this.selectedYears.includes('all')
-          ? this.allActiveStudents
-          : this.allActiveStudents.filter((s) => {
-              const yr = s.year.trim();
-              return this.selectedYears.some((lvl) => yr === lvl || yr.startsWith(lvl));
-            })
-      );
-      azBarContainer.innerHTML = renderAZBar(availableLetters, this.selectedLetter);
-      setupAZBarEvents(this.container, (letter) => {
-        this.selectedLetter = letter;
-        this.updateFilteredListOnly();
-      });
-    }
+    const availableLetters = computeAvailableLetters(
+      this.selectedYears.includes('all')
+        ? this.allActiveStudents
+        : this.allActiveStudents.filter((s) => {
+            const yr = s.year.trim();
+            return this.selectedYears.some((lvl) => yr === lvl || yr.startsWith(lvl));
+          })
+    );
+    updateAZBarAvailability(this.container, availableLetters, this.selectedLetter);
   }
 
   private attachCardEventsOnly(): void {
@@ -275,10 +267,14 @@ export class PointageView {
       }
     );
 
-    setupAZBarEvents(this.container, (letter) => {
-      this.selectedLetter = letter;
-      this.updateFilteredListOnly();
-    });
+    setupAZBarEvents(
+      this.container,
+      () => this.selectedLetter,
+      (letter) => {
+        this.selectedLetter = letter;
+        this.updateFilteredListOnly();
+      }
+    );
 
     this.attachCardEventsOnly();
   }

@@ -277,18 +277,67 @@ html, body {
   box-shadow: var(--shadow-sm);
 }
 
-/* Barre d'initiales A-Z */
+/* Barre d'initiales A-Z avec bouton "Tous" fixe et défilement infini */
 .az-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 0;
+  overflow: hidden;
+}
+
+.az-all-btn {
+  flex-shrink: 0;
+  min-width: 44px;
+  height: 32px;
+  padding: 0 8px;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.az-all-btn.available {
+  color: var(--text-primary);
+}
+
+.az-all-btn.active {
+  background-color: var(--accent-active);
+  border-color: var(--accent-active);
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: var(--shadow-sm);
+}
+
+.az-letters-scroll {
+  flex: 1;
   display: flex;
   gap: 3px;
   overflow-x: auto;
-  padding: 4px 0;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  scroll-behavior: auto;
+  min-width: 0;
 }
-.az-bar::-webkit-scrollbar { display: none; }
+.az-letters-scroll::-webkit-scrollbar { display: none; }
+
+.az-letters-set {
+  display: flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
 
 .az-letter {
+  flex-shrink: 0;
   min-width: 30px;
   height: 32px;
   padding: 0 4px;
@@ -314,6 +363,7 @@ html, body {
   border-color: var(--accent-active);
   color: #ffffff;
   font-weight: 800;
+  box-shadow: var(--shadow-sm);
 }
 
 .az-letter.disabled {

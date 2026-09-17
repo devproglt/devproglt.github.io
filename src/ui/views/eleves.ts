@@ -1,6 +1,6 @@
 import { STRINGS } from '../strings';
 import { renderYearChips, setupYearChipsEvents } from '../components/chips';
-import { renderAZBar, setupAZBarEvents, computeAvailableLetters } from '../components/az-bar';
+import { renderAZBar, setupAZBarEvents, computeAvailableLetters, updateAZBarAvailability } from '../components/az-bar';
 import { renderSegmentedToggle, setupSegmentedToggleEvents } from '../components/toggle';
 import { showToast } from '../components/toast';
 import { openImportMappingModal } from '../components/import-modal';
@@ -171,22 +171,15 @@ export class ElevesView {
       clearBtn.style.display = this.searchQuery ? 'flex' : 'none';
     }
 
-    const azBarContainer = this.container.querySelector('#eleves-az-bar');
-    if (azBarContainer) {
-      const availableLetters = computeAvailableLetters(
-        this.selectedYears.includes('all')
-          ? this.allStudents
-          : this.allStudents.filter((s) => {
-              const yr = s.year.trim();
-              return this.selectedYears.some((lvl) => yr === lvl || yr.startsWith(lvl));
-            })
-      );
-      azBarContainer.innerHTML = renderAZBar(availableLetters, this.selectedLetter);
-      setupAZBarEvents(this.container, (letter) => {
-        this.selectedLetter = letter;
-        this.updateFilteredListOnly();
-      });
-    }
+    const availableLetters = computeAvailableLetters(
+      this.selectedYears.includes('all')
+        ? this.allStudents
+        : this.allStudents.filter((s) => {
+            const yr = s.year.trim();
+            return this.selectedYears.some((lvl) => yr === lvl || yr.startsWith(lvl));
+          })
+    );
+    updateAZBarAvailability(this.container, availableLetters, this.selectedLetter);
   }
 
   private attachCardEventsOnly(): void {
@@ -250,10 +243,14 @@ export class ElevesView {
       }
     );
 
-    setupAZBarEvents(this.container, (letter) => {
-      this.selectedLetter = letter;
-      this.updateFilteredListOnly();
-    });
+    setupAZBarEvents(
+      this.container,
+      () => this.selectedLetter,
+      (letter) => {
+        this.selectedLetter = letter;
+        this.updateFilteredListOnly();
+      }
+    );
 
     const addBtn = this.container.querySelector('#eleves-add-btn');
     if (addBtn) {
