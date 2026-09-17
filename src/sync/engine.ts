@@ -83,7 +83,7 @@ export class SyncEngine {
     }
   }
 
-  public async triggerSync(source = 'manual'): Promise<{ success: boolean; message?: string }> {
+  public async triggerSync(source = 'manual', options: { forceFull?: boolean } = {}): Promise<{ success: boolean; message?: string; pulledCount?: number }> {
     if (this.isSyncing) {
       return { success: false, message: 'Synchronisation déjà en cours.' };
     }
@@ -102,6 +102,7 @@ export class SyncEngine {
     }
 
     this.isSyncing = true;
+    let totalPulled = 0;
     try {
       const deviceId = await getDeviceId();
 
@@ -137,26 +138,35 @@ export class SyncEngine {
       }
 
       // 2. PULL
-      const cursor = await getMeta<number>('lastPullCursor', 0);
+      const cursor = options.forceFull ? 0 : await getMeta<number>('lastPullCursor', 0);
       const pullRes = await pullFromServer(syncUrl, syncToken, cursor);
 
       if (pullRes.students || pullRes.attendances) {
         await db.transaction('rw', [db.students, db.attendances, db.meta], async () => {
           // Fusion des élèves
           if (pullRes.students) {
+            totalPulled += pullRes.students.length;
             for (const incomingS of pullRes.students) {
               const local = await db.students.get(incomingS.id);
-              if (!local || incomingS.updatedAt > local.updatedAt) {
-                await db.students.put({ ...incomingS, dirty: 0 });
+              if (!local || incomingS.updatedAt >= local.updatedAt || options.forceFull) {
+                const searchKey = `${incomingS.firstName} ${incomingS.lastName}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                await db.students.put({
+                  ...incomingS,
+                  active: incomingS.active !== undefined ? incomingS.active : true,
+                  isInternal: incomingS.isInternal || false,
+                  searchKey,
+                  dirty: 0,
+                });
               }
             }
           }
 
           // Fusion des pointages
           if (pullRes.attendances) {
+            totalPulled += pullRes.attendances.length;
             for (const incomingA of pullRes.attendances) {
               const local = await db.attendances.get(incomingA.id);
-              if (!local || incomingA.updatedAt > local.updatedAt) {
+              if (!local || incomingA.updatedAt >= local.updatedAt || options.forceFull) {
                 await db.attendances.put({ ...incomingA, dirty: 0 });
               }
             }
@@ -171,7 +181,7 @@ export class SyncEngine {
 
       this.retryDelayMs = 30000; // Reset backoff
       await this.notifyListeners();
-      return { success: true };
+      return { success: true, pulledCount: totalPulled };
     } catch (err: any) {
       console.error(`[Sync Engine Error (${source})]:`, err);
       // Backoff exponentiel (30s -> 2m -> 10m)

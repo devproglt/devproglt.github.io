@@ -82,6 +82,10 @@ export class ParametresView {
               ${STRINGS.actions.syncNow}
             </button>
           </div>
+
+          <button class="btn btn-secondary" id="param-force-sync-btn" style="width: 100%; border-color: var(--accent-presence); color: var(--accent-presence); margin-top: 4px;">
+            🔄 Forcer le rechargement complet (Télécharger tout le Sheet)
+          </button>
         </section>
 
         <!-- Import / Export Excel -->
@@ -225,6 +229,38 @@ export class ParametresView {
         if (res.success) {
           showToast(STRINGS.sync.syncSuccess);
           await this.loadDataAndRender();
+        } else {
+          showToast(res.message || STRINGS.sync.syncError);
+        }
+      });
+    }
+
+    const forceSyncBtn = this.container.querySelector('#param-force-sync-btn');
+    if (forceSyncBtn) {
+      forceSyncBtn.addEventListener('click', async () => {
+        const urlInput = this.container.querySelector<HTMLInputElement>('#param-sync-url');
+        const tokenInput = this.container.querySelector<HTMLInputElement>('#param-sync-token');
+        const deviceInput = this.container.querySelector<HTMLInputElement>('#param-device-name');
+
+        const url = urlInput ? urlInput.value.trim() : '';
+        const token = tokenInput ? tokenInput.value.trim() : '';
+        const device = deviceInput ? deviceInput.value.trim() : '';
+
+        if (!url || !token) {
+          showToast('Veuillez renseigner l\'URL et le jeton de sécurité ci-dessus.');
+          return;
+        }
+
+        await setMeta('syncUrl', url);
+        await setMeta('syncToken', token);
+        if (device) await setMeta('deviceId', device);
+
+        showToast('Rechargement complet du Sheet en cours...');
+        const res = await SyncEngine.getInstance().triggerSync('manual_full', { forceFull: true });
+        if (res.success) {
+          showToast(`Rechargement réussi (${res.pulledCount || 0} éléments reçus) !`);
+          await this.loadDataAndRender();
+          this.options.onRefreshNeeded();
         } else {
           showToast(res.message || STRINGS.sync.syncError);
         }

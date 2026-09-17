@@ -127,18 +127,40 @@ function handlePull(ss, request) {
   // Ligne 1 = en-têtes
   for (let i = 1; i < studentValues.length; i++) {
     const row = studentValues[i];
-    const seq = parseInt(row[10] || row[9] || 0, 10);
-    if (seq > since) {
+    if (!row[0] && !row[1] && !row[2]) continue; // Ligne vide
+
+    let seq = parseInt(row[10], 10);
+    if (isNaN(seq)) {
+      seq = i; // Fallback pour les lignes ajoutées manuellement
+    }
+
+    if (since === 0 || seq > since) {
+      let activeVal = row[5];
+      let active = true;
+      if (activeVal === false || String(activeVal).trim().toLowerCase() === 'false' || String(activeVal).trim().toLowerCase() === 'faux' || String(activeVal).trim() === '0') {
+        active = false;
+      }
+
+      let id = String(row[0] || '').trim();
+      if (!id) {
+        id = Utilities.getUuid();
+      }
+
+      let updatedAt = parseInt(row[8], 10);
+      if (isNaN(updatedAt) || updatedAt <= 0) {
+        updatedAt = Date.now();
+      }
+
       pulledStudents.push({
-        id: String(row[0]),
-        lastName: String(row[1]),
-        firstName: String(row[2]),
-        gender: String(row[3]),
-        year: String(row[4]),
-        active: Boolean(row[5]),
+        id: id,
+        lastName: String(row[1] || ''),
+        firstName: String(row[2] || ''),
+        gender: String(row[3] || 'F').toUpperCase().startsWith('M') ? 'M' : 'F',
+        year: String(row[4] || ''),
+        active: active,
         notes: String(row[6] || ''),
-        createdAt: String(row[7]),
-        updatedAt: parseInt(row[8] || 0, 10),
+        createdAt: String(row[7] || new Date().toISOString()),
+        updatedAt: updatedAt,
         isInternal: Boolean(row[9]),
       });
     }
@@ -148,17 +170,28 @@ function handlePull(ss, request) {
   const attendanceValues = attendancesSheet.getDataRange().getValues();
   for (let i = 1; i < attendanceValues.length; i++) {
     const row = attendanceValues[i];
-    const seq = parseInt(row[8] || 0, 10);
-    if (seq > since) {
+    if (!row[0] && !row[1]) continue;
+
+    let seq = parseInt(row[8], 10);
+    if (isNaN(seq)) {
+      seq = i;
+    }
+
+    if (since === 0 || seq > since) {
+      let updatedAt = parseInt(row[7], 10);
+      if (isNaN(updatedAt) || updatedAt <= 0) {
+        updatedAt = Date.now();
+      }
+
       pulledAttendances.push({
         id: String(row[0]),
         studentId: String(row[1]),
         date: String(row[2]),
-        type: String(row[3]),
+        type: String(row[3] || 'presence'),
         present: Boolean(row[4]),
         markedAt: parseInt(row[5] || 0, 10),
-        deviceId: String(row[6]),
-        updatedAt: parseInt(row[7] || 0, 10),
+        deviceId: String(row[6] || ''),
+        updatedAt: updatedAt,
       });
     }
   }

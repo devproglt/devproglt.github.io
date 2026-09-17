@@ -109,10 +109,11 @@ export async function deleteStudentPermanently(id: string): Promise<void> {
  * Supprime l'ensemble des élèves et tous les pointages (Remise à zéro complète).
  */
 export async function clearAllStudentsAndData(): Promise<void> {
-  await db.transaction('rw', [db.students, db.attendances, db.importLog], async () => {
+  await db.transaction('rw', [db.students, db.attendances, db.importLog, db.meta], async () => {
     await db.students.clear();
     await db.attendances.clear();
     await db.importLog.clear();
+    await db.meta.delete('lastPullCursor');
   });
 }
 
@@ -157,22 +158,25 @@ export async function getFilteredStudents(options: FilterStudentsOptions = {}): 
 
   if (options.query && options.query.trim()) {
     const normQuery = normalizeText(options.query);
-    all = all.filter((s) => s.searchKey.includes(normQuery));
+    all = all.filter((s) => {
+      const sk = s.searchKey || buildSearchKey(s.firstName || '', s.lastName || '');
+      return sk.includes(normQuery);
+    });
   }
 
   if (options.initialLetter && options.initialLetter !== 'ALL') {
     const initial = options.initialLetter.toUpperCase();
     all = all.filter((s) => {
-      const fn = normalizeText(s.firstName).toUpperCase();
-      const ln = normalizeText(s.lastName).toUpperCase();
+      const fn = normalizeText(s.firstName || '').toUpperCase();
+      const ln = normalizeText(s.lastName || '').toUpperCase();
       return fn.startsWith(initial) || ln.startsWith(initial);
     });
   }
 
   return all.sort((a, b) => {
-    const fnComp = a.firstName.localeCompare(b.firstName, 'fr', { sensitivity: 'base' });
+    const fnComp = (a.firstName || '').localeCompare(b.firstName || '', 'fr', { sensitivity: 'base' });
     if (fnComp !== 0) return fnComp;
-    return a.lastName.localeCompare(b.lastName, 'fr', { sensitivity: 'base' });
+    return (a.lastName || '').localeCompare(b.lastName || '', 'fr', { sensitivity: 'base' });
   });
 }
 
