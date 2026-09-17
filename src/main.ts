@@ -9,7 +9,7 @@ import { showToast } from './ui/components/toast';
 import { getTodayBrussels } from './domain/dates';
 import { SyncEngine, type SyncStatus } from './sync/engine';
 import { getAttendancesByDateAndType } from './db/attendances';
-import { getAllStudents } from './db/students';
+import { getAllStudents, deduplicateStudents } from './db/students';
 import { calculateDaySummary } from './domain/stats';
 
 import { PointageView } from './ui/views/pointage';
@@ -96,6 +96,9 @@ class App {
       this.headerState.pendingCount = pendingCount;
       this.renderHeaderUI();
     });
+
+    // 3. Déduplication de sécurité initiale
+    await deduplicateStudents();
 
     // 4. Configuration des routes
     this.setupRoutes();

@@ -1,5 +1,5 @@
 import { getMeta, setMeta, getDeviceId } from '../db/meta';
-import { getDirtyStudents, markStudentsSynced } from '../db/students';
+import { getDirtyStudents, markStudentsSynced, deduplicateStudents } from '../db/students';
 import { getDirtyAttendances, markAttendancesSynced } from '../db/attendances';
 import { db } from '../db/schema';
 import { pushToServer, pullFromServer } from './client';
@@ -146,10 +146,48 @@ export class SyncEngine {
           // Fusion des élèves
           if (pullRes.students) {
             totalPulled += pullRes.students.length;
+            const existingAll = await db.students.toArray();
+            const existingByName = new Map<string, typeof existingAll[0]>();
+            for (const ex of existingAll) {
+              const k = `${ex.firstName.trim().toLowerCase()}_${ex.lastName.trim().toLowerCase()}_${(ex.year || '').trim().toLowerCase()}`;
+              existingByName.set(k, ex);
+            }
+
             for (const incomingS of pullRes.students) {
               const local = await db.students.get(incomingS.id);
-              if (!local || incomingS.updatedAt >= local.updatedAt || options.forceFull) {
-                const searchKey = `${incomingS.firstName} ${incomingS.lastName}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+              const nameKey = `${incomingS.firstName.trim().toLowerCase()}_${incomingS.lastName.trim().toLowerCase()}_${(incomingS.year || '').trim().toLowerCase()}`;
+              const matchByName = existingByName.get(nameKey);
+
+              const searchKey = `${incomingS.firstName} ${incomingS.lastName}`.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+              if (local) {
+                if (incomingS.updatedAt >= local.updatedAt || options.forceFull) {
+                  await db.students.put({
+                    ...incomingS,
+                    active: incomingS.active !== undefined ? incomingS.active : true,
+                    isInternal: incomingS.isInternal || false,
+                    searchKey,
+                    dirty: 0,
+                  });
+                }
+              } else if (matchByName && matchByName.id !== incomingS.id) {
+                // Même nom mais ID différent (doublon) : fusionner vers l'ID du serveur
+                const oldId = matchByName.id;
+                const oldAttendances = await db.attendances.where('studentId').equals(oldId).toArray();
+                for (const att of oldAttendances) {
+                  const newAttId = `${incomingS.id}_${att.date}_${att.type}`;
+                  const existingAtt = await db.attendances.get(newAttId);
+                  if (!existingAtt) {
+                    await db.attendances.put({
+                      ...att,
+                      id: newAttId,
+                      studentId: incomingS.id,
+                    });
+                  }
+                  await db.attendances.delete(att.id);
+                }
+                await db.students.delete(oldId);
+
                 await db.students.put({
                   ...incomingS,
                   active: incomingS.active !== undefined ? incomingS.active : true,
@@ -157,6 +195,16 @@ export class SyncEngine {
                   searchKey,
                   dirty: 0,
                 });
+                existingByName.set(nameKey, incomingS as any);
+              } else {
+                await db.students.put({
+                  ...incomingS,
+                  active: incomingS.active !== undefined ? incomingS.active : true,
+                  isInternal: incomingS.isInternal || false,
+                  searchKey,
+                  dirty: 0,
+                });
+                existingByName.set(nameKey, incomingS as any);
               }
             }
           }
@@ -177,6 +225,9 @@ export class SyncEngine {
           }
           await setMeta('lastSyncAt', Date.now());
         });
+
+        // Déduplication de sécurité finale
+        await deduplicateStudents();
       }
 
       this.retryDelayMs = 30000; // Reset backoff

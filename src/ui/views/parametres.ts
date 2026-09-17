@@ -4,7 +4,7 @@ import { openImportMappingModal } from '../components/import-modal';
 import { getMeta, setMeta, getDeviceId } from '../../db/meta';
 import { SyncEngine } from '../../sync/engine';
 import { downloadImportTemplate } from '../../io/import';
-import { getAllStudents, clearAllStudentsAndData } from '../../db/students';
+import { getAllStudents, clearAllStudentsAndData, deduplicateStudents } from '../../db/students';
 import { getAllAttendances, clearAllAttendances } from '../../db/attendances';
 import { db } from '../../db/schema';
 import { getTodayBrussels } from '../../domain/dates';
@@ -83,6 +83,10 @@ export class ParametresView {
 
           <button class="btn btn-secondary" id="param-force-sync-btn" style="width: 100%; border-color: var(--accent-presence); color: var(--accent-presence); margin-top: 4px;">
             🔄 Forcer le rechargement complet (Télécharger tout le Sheet)
+          </button>
+
+          <button class="btn btn-secondary" id="param-clean-duplicates-btn" style="width: 100%; margin-top: 4px;">
+            🧹 Nettoyer et fusionner les doublons d'élèves
           </button>
         </section>
 
@@ -239,6 +243,21 @@ export class ParametresView {
         } else {
           showToast(res.message || STRINGS.sync.syncError);
         }
+      });
+    }
+
+    const cleanDupBtn = this.container.querySelector('#param-clean-duplicates-btn');
+    if (cleanDupBtn) {
+      cleanDupBtn.addEventListener('click', async () => {
+        showToast('Analyse et fusion des doublons...');
+        const merged = await deduplicateStudents();
+        if (merged > 0) {
+          showToast(`Nettoyage réussi : ${merged} élève(s) en double fusionné(s) !`);
+        } else {
+          showToast('Aucun doublon trouvé.');
+        }
+        await this.loadDataAndRender();
+        this.options.onRefreshNeeded();
       });
     }
 

@@ -59,11 +59,17 @@ function handlePush(ss, request, configSheet) {
 
     // --- Processus PUSH pour les élèves ---
     if (request.students && request.students.length > 0) {
-      const studentIndex = buildIdMap(studentsSheet);
+      const maps = buildStudentMaps(studentsSheet);
       for (let i = 0; i < request.students.length; i++) {
         const incoming = request.students[i];
-        const rowIdx = studentIndex[incoming.id];
+        let rowIdx = maps.idMap[incoming.id];
         
+        // Si non trouvé par ID, chercher par Nom + Prénom + Classe pour éviter tout doublon
+        const nameKey = normalizeStr(incoming.lastName) + '_' + normalizeStr(incoming.firstName) + '_' + normalizeStr(incoming.year);
+        if (!rowIdx && maps.nameMap[nameKey]) {
+          rowIdx = maps.nameMap[nameKey].rowIdx;
+        }
+
         if (rowIdx) {
           const currentUpdatedAt = parseInt(studentsSheet.getRange(rowIdx, 9).getValue() || 0, 10);
           if (incoming.updatedAt >= currentUpdatedAt) {
@@ -74,6 +80,9 @@ function handlePush(ss, request, configSheet) {
           }
         } else {
           appendStudentRow(studentsSheet, incoming, nextSeq++);
+          const lastRow = studentsSheet.getLastRow();
+          maps.idMap[incoming.id] = lastRow;
+          maps.nameMap[nameKey] = { rowIdx: lastRow, id: incoming.id };
           accepted.push(incoming.id);
         }
       }
@@ -96,6 +105,7 @@ function handlePush(ss, request, configSheet) {
           }
         } else {
           appendAttendanceRow(attendancesSheet, incoming, nextSeq++);
+          attendanceIndex[incoming.id] = attendancesSheet.getLastRow();
           accepted.push(incoming.id);
         }
       }
@@ -123,6 +133,7 @@ function handlePull(ss, request) {
   const currentNextSeq = parseInt(getConfigValue(configSheet, 'nextSeq') || '1', 10);
 
   const pulledStudents = [];
+  const seenStudentKeys = {};
   const studentValues = studentsSheet.getDataRange().getValues();
   // Ligne 1 = en-têtes
   for (let i = 1; i < studentValues.length; i++) {
@@ -151,12 +162,22 @@ function handlePull(ss, request) {
         updatedAt = Date.now();
       }
 
+      const lastName = String(row[1] || '').trim();
+      const firstName = String(row[2] || '').trim();
+      const year = String(row[4] || '').trim();
+
+      const nameKey = normalizeStr(lastName) + '_' + normalizeStr(firstName) + '_' + normalizeStr(year);
+      if (seenStudentKeys[nameKey]) {
+        continue; // Déduplication automatique sur le flux
+      }
+      seenStudentKeys[nameKey] = true;
+
       pulledStudents.push({
         id: id,
-        lastName: String(row[1] || ''),
-        firstName: String(row[2] || ''),
+        lastName: lastName,
+        firstName: firstName,
         gender: String(row[3] || 'F').toUpperCase().startsWith('M') ? 'M' : 'F',
-        year: String(row[4] || ''),
+        year: year,
         active: active,
         notes: String(row[6] || ''),
         createdAt: String(row[7] || new Date().toISOString()),
@@ -202,6 +223,33 @@ function handlePull(ss, request) {
     attendances: pulledAttendances,
     cursor: currentNextSeq,
   });
+}
+
+function normalizeStr(s) {
+  if (!s) return '';
+  return String(s).trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function buildStudentMaps(sheet) {
+  const idMap = {};
+  const nameMap = {};
+  const values = sheet.getDataRange().getValues();
+  for (let i = 1; i < values.length; i++) {
+    const id = String(values[i][0] || '').trim();
+    const lastName = normalizeStr(values[i][1]);
+    const firstName = normalizeStr(values[i][2]);
+    const year = normalizeStr(values[i][4]);
+    if (id) {
+      idMap[id] = i + 1; // 1-based row index
+    }
+    if (lastName && firstName) {
+      const nameKey = lastName + '_' + firstName + '_' + year;
+      if (!nameMap[nameKey]) {
+        nameMap[nameKey] = { rowIdx: i + 1, id: id };
+      }
+    }
+  }
+  return { idMap: idMap, nameMap: nameMap };
 }
 
 // Utilitaires de feuilles et index
