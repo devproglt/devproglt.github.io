@@ -226,7 +226,11 @@ class App {
       const ficheView = new FicheView(viewContainer, {
         studentId,
         onBack: () => {
-          window.history.back();
+          if (window.history.length > 1) {
+            window.history.back();
+          } else {
+            this.router.navigate('#/eleves');
+          }
         },
         onRefreshNeeded: refreshCallback,
       });

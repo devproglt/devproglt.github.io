@@ -34,29 +34,67 @@ export function formatDateBrussels(dateInput: Date | number | string): string {
 /**
  * Formate l'heure au format HH:mm (Europe/Brussels).
  */
-export function formatTimeBrussels(timestamp: number): string {
-  const date = new Date(timestamp);
-  return new Intl.DateTimeFormat('fr-BE', {
-    timeZone: TIMEZONE,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).format(date);
+export function formatTimeBrussels(timestamp: number | string | Date): string {
+  if (!timestamp) return '--:--';
+  try {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return '--:--';
+    return new Intl.DateTimeFormat('fr-BE', {
+      timeZone: TIMEZONE,
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(date);
+  } catch {
+    return '--:--';
+  }
 }
 
 /**
- * Formate une date YYYY-MM-DD pour un affichage lisible (ex: "Jeudi 17 septembre 2026").
+ * Formate une date YYYY-MM-DD ou Date ou timestamp pour un affichage lisible (ex: "Jeudi 17 septembre 2026").
  */
-export function formatReadableDate(dateStr: string): string {
-  if (!dateStr) return '';
-  const [year, month, day] = dateStr.split('-').map(Number);
-  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
-  return new Intl.DateTimeFormat('fr-BE', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(date);
+export function formatReadableDate(dateInput: string | Date | number): string {
+  if (!dateInput) return '';
+  try {
+    let date: Date;
+    if (typeof dateInput === 'string') {
+      const trimmed = dateInput.trim();
+      if (trimmed.includes('/')) {
+        const parts = trimmed.split('/');
+        if (parts.length === 3) {
+          // Format DD/MM/YYYY
+          date = new Date(Date.UTC(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 12, 0, 0));
+        } else {
+          date = new Date(trimmed);
+        }
+      } else if (trimmed.includes('-')) {
+        const parts = trimmed.substring(0, 10).split('-').map(Number);
+        if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+          date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
+        } else {
+          date = new Date(trimmed);
+        }
+      } else {
+        const num = Number(trimmed);
+        date = isNaN(num) ? new Date(trimmed) : new Date(num);
+      }
+    } else {
+      date = new Date(dateInput);
+    }
+
+    if (isNaN(date.getTime())) {
+      return String(dateInput);
+    }
+
+    return new Intl.DateTimeFormat('fr-BE', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    }).format(date);
+  } catch {
+    return String(dateInput);
+  }
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDateBrussels, getSchoolYearRange, getMonthRange } from '../../src/domain/dates';
+import { formatDateBrussels, getSchoolYearRange, getMonthRange, formatReadableDate } from '../../src/domain/dates';
 
 describe('Domain: dates', () => {
   it('formate les dates en YYYY-MM-DD Europe/Brussels', () => {
@@ -22,5 +22,12 @@ describe('Domain: dates', () => {
     const range = getMonthRange('2026-09-17');
     expect(range.start).toBe('2026-09-01');
     expect(range.end).toBe('2026-09-30');
+  });
+
+  it('formate les dates lisibles sans crasher sur les valeurs inhabituelles', () => {
+    expect(formatReadableDate('2026-09-18')).toContain('septembre');
+    expect(formatReadableDate('18/09/2026')).toContain('septembre');
+    expect(formatReadableDate('')).toBe('');
+    expect(formatReadableDate('date-invalide')).toBe('date-invalide');
   });
 });

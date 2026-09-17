@@ -17,7 +17,11 @@ export class Router {
   }
 
   public navigate(route: string): void {
-    window.location.hash = route;
+    if (window.location.hash === route) {
+      this.handleHashChange();
+    } else {
+      window.location.hash = route;
+    }
   }
 
   public init(): void {
