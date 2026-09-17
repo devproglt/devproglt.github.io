@@ -1,4 +1,5 @@
 import { db, type StudentRecord } from './schema';
+export type { StudentRecord };
 import { normalizeText, buildSearchKey } from '../domain/normalize';
 import { generateUUID } from '../domain/ids';
 

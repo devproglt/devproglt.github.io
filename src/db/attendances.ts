@@ -1,4 +1,5 @@
 import { db, type AttendanceRecord } from './schema';
+export type { AttendanceRecord };
 import { buildAttendanceId } from '../domain/ids';
 import { getDeviceId } from './meta';
 

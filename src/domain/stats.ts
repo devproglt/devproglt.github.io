@@ -27,6 +27,9 @@ export interface AttendanceRecord {
   type: 'presence' | 'course';
   present: boolean;
   markedAt: number;
+  deviceId?: string;
+  updatedAt?: number;
+  dirty?: 0 | 1;
 }
 
 /**
