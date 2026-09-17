@@ -126,9 +126,17 @@ class App {
           this.activeViewInstance.render();
         }
       },
-      () => {
+      async () => {
         showToast('Synchronisation en cours...');
-        this.syncEngine.triggerSync('header_button');
+        const res = await this.syncEngine.triggerSync('header_button');
+        if (!res.success) {
+          showToast(res.message || 'Erreur de synchronisation');
+          if (res.message && res.message.includes('non configuré')) {
+            this.router.navigate('#/parametres');
+          }
+        } else {
+          showToast('Synchronisation réussie !');
+        }
       },
       () => {
         this.router.navigate('#/parametres');

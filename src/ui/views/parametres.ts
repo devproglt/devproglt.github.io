@@ -181,9 +181,18 @@ export class ParametresView {
         const tokenInput = this.container.querySelector<HTMLInputElement>('#param-sync-token');
         const deviceInput = this.container.querySelector<HTMLInputElement>('#param-device-name');
 
-        if (urlInput) await setMeta('syncUrl', urlInput.value.trim());
-        if (tokenInput) await setMeta('syncToken', tokenInput.value.trim());
-        if (deviceInput && deviceInput.value.trim()) await setMeta('deviceId', deviceInput.value.trim());
+        const url = urlInput ? urlInput.value.trim() : '';
+        const token = tokenInput ? tokenInput.value.trim() : '';
+        const device = deviceInput ? deviceInput.value.trim() : '';
+
+        if (!url || !token) {
+          showToast('Veuillez renseigner l\'URL et le jeton de sécurité.');
+          return;
+        }
+
+        await setMeta('syncUrl', url);
+        await setMeta('syncToken', token);
+        if (device) await setMeta('deviceId', device);
 
         showToast('Paramètres de synchronisation enregistrés.');
         this.options.onRefreshNeeded();
@@ -193,6 +202,24 @@ export class ParametresView {
     const syncNowBtn = this.container.querySelector('#param-sync-now-btn');
     if (syncNowBtn) {
       syncNowBtn.addEventListener('click', async () => {
+        const urlInput = this.container.querySelector<HTMLInputElement>('#param-sync-url');
+        const tokenInput = this.container.querySelector<HTMLInputElement>('#param-sync-token');
+        const deviceInput = this.container.querySelector<HTMLInputElement>('#param-device-name');
+
+        const url = urlInput ? urlInput.value.trim() : '';
+        const token = tokenInput ? tokenInput.value.trim() : '';
+        const device = deviceInput ? deviceInput.value.trim() : '';
+
+        if (!url || !token) {
+          showToast('Veuillez renseigner l\'URL et le jeton de sécurité ci-dessus.');
+          return;
+        }
+
+        // Sauvegarde automatique des champs avant lancement
+        await setMeta('syncUrl', url);
+        await setMeta('syncToken', token);
+        if (device) await setMeta('deviceId', device);
+
         showToast('Synchronisation en cours...');
         const res = await SyncEngine.getInstance().triggerSync('manual');
         if (res.success) {
