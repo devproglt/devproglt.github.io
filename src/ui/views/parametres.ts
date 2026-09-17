@@ -1,12 +1,11 @@
 import { STRINGS } from '../strings';
 import { showToast } from '../components/toast';
 import { openImportMappingModal } from '../components/import-modal';
-import { getMeta, setMeta, getDeviceId, getYearsList, setYearsList } from '../../db/meta';
+import { getMeta, setMeta, getDeviceId } from '../../db/meta';
 import { SyncEngine } from '../../sync/engine';
 import { downloadImportTemplate } from '../../io/import';
-import { getAllStudents, createStudent, clearAllStudentsAndData, type StudentRecord } from '../../db/students';
+import { getAllStudents, clearAllStudentsAndData } from '../../db/students';
 import { getAllAttendances, clearAllAttendances } from '../../db/attendances';
-import { buildAttendanceId } from '../../domain/ids';
 import { db } from '../../db/schema';
 import { getTodayBrussels } from '../../domain/dates';
 
@@ -33,7 +32,6 @@ export class ParametresView {
     const syncToken = await getMeta<string>('syncToken', '');
     const deviceName = await getDeviceId();
     const lastSyncAt = await getMeta<number | null>('lastSyncAt', null);
-    const yearsList = await getYearsList();
 
     const engine = SyncEngine.getInstance();
     const pendingCount = await engine.getPendingCount();
@@ -104,25 +102,6 @@ export class ParametresView {
           </div>
         </section>
 
-        <!-- Gestion des Années Scolaires -->
-        <section style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 12px;">
-          <h3 style="font-size: var(--font-size-base); font-weight: 700;">Liste des Années / Classes</h3>
-
-          <div style="display: flex; flex-wrap: wrap; gap: 6px;">
-            ${yearsList.map((yr) => `
-              <span class="chip" style="cursor: default;">
-                ${this.escapeHtml(yr)}
-                <button class="param-delete-year-btn" data-year="${this.escapeHtml(yr)}" style="background: none; border: none; margin-left: 6px; cursor: pointer; color: var(--color-danger); font-weight: bold;">✕</button>
-              </span>
-            `).join('')}
-          </div>
-
-          <div style="display: flex; gap: 8px; margin-top: 4px;">
-            <input type="text" id="param-add-year-input" class="search-input" placeholder="Ex: 5C" style="min-height: 40px; padding: 0 10px;" />
-            <button class="btn btn-secondary" id="param-add-year-btn" style="min-height: 40px;">Ajouter</button>
-          </div>
-        </section>
-
         <!-- Sauvegarde Locale et Restauration -->
         <section style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 12px;">
           <h3 style="font-size: var(--font-size-base); font-weight: 700;">Sauvegarde & Restauration (.json)</h3>
@@ -138,16 +117,12 @@ export class ParametresView {
           </div>
         </section>
 
-        <!-- Démonstration & Application -->
+        <!-- Mise à jour de l'application -->
         <section style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 12px;">
-          <h3 style="font-size: var(--font-size-base); font-weight: 700;">Application & Démonstration</h3>
-          <p style="font-size: var(--font-size-xs); color: var(--text-secondary);">Version : 1.0.0 (PWA Standalone)</p>
-
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            <button class="btn btn-secondary" id="param-seed-demo-btn" style="background-color: var(--accent-presence-light); color: var(--accent-presence);">
-              🌱 Générer un jeu de démonstration (200 élèves, 3 mois d'historique)
-            </button>
-            <button class="btn btn-secondary" id="param-update-app-btn">
+          <h3 style="font-size: var(--font-size-base); font-weight: 700;">Version de l'application</h3>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: var(--font-size-xs); color: var(--text-secondary);">PWA Standalone (Hors ligne)</span>
+            <button class="btn btn-secondary" id="param-update-app-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
               🔄 ${STRINGS.actions.updateApp}
             </button>
           </div>
@@ -174,10 +149,10 @@ export class ParametresView {
       </div>
     `;
 
-    this.attachEvents(yearsList);
+    this.attachEvents();
   }
 
-  private attachEvents(yearsList: string[]): void {
+  private attachEvents(): void {
     const saveSyncBtn = this.container.querySelector('#param-save-sync-btn');
     if (saveSyncBtn) {
       saveSyncBtn.addEventListener('click', async () => {
@@ -294,31 +269,6 @@ export class ParametresView {
       });
     }
 
-    const deleteYearBtns = this.container.querySelectorAll<HTMLButtonElement>('.param-delete-year-btn');
-    deleteYearBtns.forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const yr = btn.dataset.year;
-        if (yr) {
-          const nextYears = yearsList.filter((y) => y !== yr);
-          await setYearsList(nextYears);
-          await this.loadDataAndRender();
-        }
-      });
-    });
-
-    const addYearBtn = this.container.querySelector('#param-add-year-btn');
-    const addYearInput = this.container.querySelector<HTMLInputElement>('#param-add-year-input');
-    if (addYearBtn && addYearInput) {
-      addYearBtn.addEventListener('click', async () => {
-        const newYr = addYearInput.value.trim();
-        if (newYr && !yearsList.includes(newYr)) {
-          yearsList.push(newYr);
-          await setYearsList(yearsList);
-          await this.loadDataAndRender();
-        }
-      });
-    }
-
     const backupBtn = this.container.querySelector('#param-backup-json-btn');
     if (backupBtn) {
       backupBtn.addEventListener('click', async () => {
@@ -369,16 +319,6 @@ export class ParametresView {
       });
     }
 
-    const seedBtn = this.container.querySelector('#param-seed-demo-btn');
-    if (seedBtn) {
-      seedBtn.addEventListener('click', async () => {
-        showToast('Génération de 200 élèves et 3 mois d\'historique...');
-        await this.generateDemoData();
-        showToast('Jeu de démonstration créé avec succès !');
-        this.options.onRefreshNeeded();
-      });
-    }
-
     const updateBtn = this.container.querySelector('#param-update-app-btn');
     if (updateBtn) {
       updateBtn.addEventListener('click', () => {
@@ -412,68 +352,6 @@ export class ParametresView {
         }
       });
     }
-  }
-
-  private async generateDemoData(): Promise<void> {
-    const years = ['1A', '1B', '2A', '2B', '3A', '3B', '4A', '4B', '5A', '5B', '6A', '6B'];
-    await setYearsList(years);
-
-    const firstNamesF = ['Emma', 'Jade', 'Louise', 'Alice', 'Chloé', 'Lina', 'Léa', 'Rose', 'Mia', 'Anna', 'Manon', 'Julia', 'Inès', 'Camille', 'Sarah', 'Zoé', 'Eva', 'Lola', 'Victoire', 'Mathilde'];
-    const firstNamesM = ['Gabriel', 'Léo', 'Raphaël', 'Maël', 'Louis', 'Noah', 'Jules', 'Adam', 'Lucas', 'Hugo', 'Arthur', 'Liam', 'Ethan', 'Paul', 'Tom', 'Sacha', 'Théo', 'Mathis', 'Antoine', 'Victor'];
-    const lastNames = ['Martin', 'Bernard', 'Thomas', 'Petit', 'Robert', 'Richard', 'Durand', 'Dubois', 'Moreau', 'Laurent', 'Simon', 'Michel', 'Lefebvre', 'Leroy', 'Roux', 'David', 'Bertrand', 'Morel', 'Fournier', 'Girard'];
-
-    const now = Date.now();
-    const studentsCreated: StudentRecord[] = [];
-
-    await db.transaction('rw', db.students, async () => {
-      for (let i = 0; i < 200; i++) {
-        const gender: 'F' | 'M' = i % 2 === 0 ? 'F' : 'M';
-        const fnList = gender === 'F' ? firstNamesF : firstNamesM;
-        const firstName = fnList[Math.floor(Math.random() * fnList.length)] + (i > 40 ? ` ${i}` : '');
-        const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
-        const year = years[i % years.length];
-
-        const student = await createStudent({
-          firstName,
-          lastName,
-          gender,
-          year,
-          isInternal: i % 4 === 0,
-          active: true,
-        });
-        studentsCreated.push(student);
-      }
-    });
-
-    const today = new Date();
-    const deviceId = await getDeviceId();
-
-    await db.transaction('rw', db.attendances, async () => {
-      for (let d = 0; d < 90; d += 3) {
-        const targetDate = new Date(today);
-        targetDate.setDate(today.getDate() - d);
-        const dateStr = targetDate.toISOString().substring(0, 10);
-
-        for (let j = 0; j < 40; j++) {
-          const student = studentsCreated[Math.floor(Math.random() * studentsCreated.length)];
-          const type: 'presence' | 'course' = Math.random() > 0.3 ? 'presence' : 'course';
-          const markedAt = targetDate.getTime() + Math.floor(Math.random() * 28800000);
-
-          const id = buildAttendanceId(student.id, dateStr, type);
-          await db.attendances.put({
-            id,
-            studentId: student.id,
-            date: dateStr,
-            type,
-            present: true,
-            markedAt,
-            deviceId,
-            updatedAt: now,
-            dirty: 1,
-          });
-        }
-      }
-    });
   }
 
   private escapeHtml(str: string): string {

@@ -263,11 +263,26 @@ class App {
       this.renderNavbarUI('#/parametres');
       const parametresView = new ParametresView(viewContainer, {
         onRefreshNeeded: refreshCallback,
-        onUpdateAppClick: () => {
+        onUpdateAppClick: async () => {
+          showToast('Recherche de mises à jour...');
+          try {
+            if ('serviceWorker' in navigator) {
+              const regs = await navigator.serviceWorker.getRegistrations();
+              for (const reg of regs) {
+                await reg.update();
+              }
+            }
+          } catch (e) {
+            console.warn(e);
+          }
+
           if (this.updateSWHandler) {
             this.updateSWHandler();
           } else {
-            showToast('L\'application est déjà à jour.');
+            showToast('Rechargement de l\'application...');
+            setTimeout(() => {
+              window.location.reload();
+            }, 600);
           }
         },
       });
@@ -281,6 +296,22 @@ class App {
   private initServiceWorker(): void {
     if ('serviceWorker' in navigator) {
       const updateSW = registerSW({
+        immediate: true,
+        onRegisteredSW(_swUrl, r) {
+          if (r) {
+            // Vérifier les mises à jour toutes les 30 secondes
+            setInterval(() => {
+              r.update().catch(() => {});
+            }, 30 * 1000);
+
+            // Vérifier automatiquement lors du retour sur l'onglet ou l'application
+            document.addEventListener('visibilitychange', () => {
+              if (document.visibilityState === 'visible') {
+                r.update().catch(() => {});
+              }
+            });
+          }
+        },
         onNeedRefresh: () => {
           const banner = document.getElementById('sw-update-banner');
           const btn = document.getElementById('sw-update-btn');
