@@ -187,8 +187,6 @@ export class PointageView {
 
 
   private renderEventCreationForm(): void {
-    const hasExistingEvents = this.dayEvents.length > 0;
-
     const typeToggleHtml = renderSegmentedToggle(
       [
         { value: 'presence', label: STRINGS.types.presence },
@@ -204,27 +202,10 @@ export class PointageView {
             <h3 style="font-size: var(--font-size-lg); font-weight: 700;">
               Nouvelle entrée
             </h3>
-            ${hasExistingEvents ? `
-              <button class="btn btn-secondary" id="pointage-cancel-create-btn" style="min-height: 32px; padding: 0 10px; font-size: 0.75rem;">
-                Annuler
-              </button>
-            ` : ''}
+            <div id="pointage-cancel-create-container"></div>
           </div>
 
-          ${hasExistingEvents ? `
-            <div style="background: var(--bg-surface-hover); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
-              <span style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-secondary);">
-                Séance(s) existante(s) pour le ${formatReadableDate(this.options.date)} :
-              </span>
-              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                ${this.dayEvents.map((ev) => `
-                  <button type="button" class="btn btn-secondary pointage-resume-ev-btn" data-event-id="${ev.id}" style="font-size: 0.8rem; padding: 6px 12px;">
-                    Reprendre « ${this.escapeHtml(ev.title)} » (${ev.type === 'presence' ? 'Entraînement' : 'Course'})
-                  </button>
-                `).join('')}
-              </div>
-            </div>
-          ` : ''}
+          <div id="pointage-existing-events-container"></div>
 
           <div>
             <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 6px;">
@@ -278,29 +259,12 @@ export class PointageView {
       <div id="pointage-modal-container"></div>
     `;
 
+    this.updateExistingEventsBanner();
+
     setupSegmentedToggleEvents(this.container, (val) => {
       const newType = val as 'presence' | 'course';
       this.options.type = newType;
       applyAccentTheme(newType);
-    });
-
-    const resumeBtns = this.container.querySelectorAll<HTMLButtonElement>('.pointage-resume-ev-btn');
-    resumeBtns.forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const evId = btn.dataset.eventId;
-        const found = this.dayEvents.find((e) => e.id === evId);
-        if (found) {
-          this.activeEvent = found;
-          this.options.eventId = found.id;
-          this.options.type = found.type;
-          this.isCreatingNewEvent = false;
-          if (this.options.onEventChange) {
-            this.options.onEventChange(found.id, found.date, found.type);
-          }
-          await this.loadDataAndRender();
-          this.options.onRefreshNeeded();
-        }
-      });
     });
 
     const titleInput = this.container.querySelector<HTMLInputElement>('#pointage-create-title');
@@ -320,18 +284,11 @@ export class PointageView {
             dateReadable.textContent = formatReadableDate(dateInput.value);
           }
           this.dayEvents = await getEventsByDate(dateInput.value);
+          this.updateExistingEventsBanner();
         }
       };
       dateInput.addEventListener('input', onDateInput);
       dateInput.addEventListener('change', onDateInput);
-    }
-
-    const cancelBtn = this.container.querySelector('#pointage-cancel-create-btn');
-    if (cancelBtn) {
-      cancelBtn.addEventListener('click', () => {
-        this.isCreatingNewEvent = false;
-        this.loadDataAndRender();
-      });
     }
 
     const startBtn = this.container.querySelector('#pointage-start-session-btn');
@@ -364,6 +321,71 @@ export class PointageView {
         await this.loadDataAndRender();
         this.options.onRefreshNeeded();
       });
+    }
+  }
+
+  private updateExistingEventsBanner(): void {
+    const existingContainer = this.container.querySelector('#pointage-existing-events-container');
+    const cancelContainer = this.container.querySelector('#pointage-cancel-create-container');
+    if (!existingContainer) return;
+
+    if (this.dayEvents.length > 0) {
+      if (cancelContainer) {
+        cancelContainer.innerHTML = `
+          <button class="btn btn-secondary" id="pointage-cancel-create-btn" style="min-height: 32px; padding: 0 10px; font-size: 0.75rem;">
+            Annuler
+          </button>
+        `;
+        const cancelBtn = cancelContainer.querySelector('#pointage-cancel-create-btn');
+        if (cancelBtn) {
+          cancelBtn.addEventListener('click', () => {
+            const matchType = this.dayEvents.find((e) => e.type === this.options.type) || this.dayEvents[0];
+            this.activeEvent = matchType;
+            this.options.eventId = matchType.id;
+            this.isCreatingNewEvent = false;
+            this.loadDataAndRender();
+          });
+        }
+      }
+
+      existingContainer.innerHTML = `
+        <div style="background: var(--bg-surface-hover); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+          <span style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-secondary);">
+            Séance(s) existante(s) pour le ${formatReadableDate(this.options.date)} :
+          </span>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            ${this.dayEvents.map((ev) => `
+              <button type="button" class="btn btn-secondary pointage-resume-ev-btn" data-event-id="${ev.id}" style="font-size: 0.8rem; padding: 6px 12px;">
+                Reprendre « ${this.escapeHtml(ev.title)} » (${ev.type === 'presence' ? 'Entraînement' : 'Course'})
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+
+      const resumeBtns = existingContainer.querySelectorAll<HTMLButtonElement>('.pointage-resume-ev-btn');
+      resumeBtns.forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const evId = btn.dataset.eventId;
+          const found = this.dayEvents.find((e) => e.id === evId);
+          if (found) {
+            this.activeEvent = found;
+            this.options.eventId = found.id;
+            this.options.type = found.type;
+            this.isCreatingNewEvent = false;
+            if (this.options.onEventChange) {
+              this.options.onEventChange(found.id, found.date, found.type);
+            }
+            await this.loadDataAndRender();
+            this.options.onRefreshNeeded();
+          }
+        });
+      });
+    } else {
+      existingContainer.innerHTML = '';
+      if (cancelContainer) {
+        cancelContainer.innerHTML = '';
+      }
     }
   }
 
