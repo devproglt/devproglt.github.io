@@ -6,7 +6,7 @@ import { getAllAttendances, type AttendanceRecord } from '../../db/attendances';
 import { getAllEvents, type EventRecord } from '../../db/events';
 import { getYearsList } from '../../db/meta';
 import { calculateAllStudentStats, type StudentStats } from '../../domain/stats';
-import { formatReadableDate, getSchoolYearRange, getMonthRange, getTodayBrussels } from '../../domain/dates';
+import { formatReadableDate } from '../../domain/dates';
 import { exportCurrentViewToExcel } from '../../io/export';
 
 export interface HistoriqueViewOptions {
@@ -22,11 +22,7 @@ export class HistoriqueView {
   private options: HistoriqueViewOptions;
 
   private activeTab: 'students' | 'dates' = 'students';
-  private periodPreset: 'all' | 'month' | 'schoolyear' | 'custom' = 'all';
-  private startDate = '';
-  private endDate = '';
   private yearFilter = 'all';
-  private typeFilter = 'all';
   private includeInactive = false;
 
   private sortField: SortField = 'lastName';
@@ -59,17 +55,8 @@ export class HistoriqueView {
     this.attendances = attendances;
     this.events = events;
 
-    // Filtrage par période
-    let filteredAttendances = this.attendances.filter((a) => a.present);
-    if (this.startDate) {
-      filteredAttendances = filteredAttendances.filter((a) => a.date >= this.startDate);
-    }
-    if (this.endDate) {
-      filteredAttendances = filteredAttendances.filter((a) => a.date <= this.endDate);
-    }
-    if (this.typeFilter !== 'all') {
-      filteredAttendances = filteredAttendances.filter((a) => a.type === this.typeFilter);
-    }
+    // Présences actives (toujours la totalité des données)
+    const filteredAttendances = this.attendances.filter((a) => a.present);
 
     // Filtrage des élèves
     let filteredStudents = this.students;
@@ -84,7 +71,7 @@ export class HistoriqueView {
 
     this.container.innerHTML = `
       <div style="padding: 16px; display: flex; flex-direction: column; gap: 14px;">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
           <h2>${STRINGS.nav.historique}</h2>
           <button class="btn btn-primary" id="historique-export-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
             ${STRINGS.actions.exportExcel}
@@ -101,31 +88,21 @@ export class HistoriqueView {
           )}
         </div>
 
-        <!-- Filtres généraux -->
-        <div style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; display: flex; flex-direction: column; gap: 10px;">
-          <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-            <label style="font-size: var(--font-size-xs); font-weight: 600;">Période :</label>
-            <button class="chip ${this.periodPreset === 'all' ? 'active' : ''}" id="preset-all">Tout</button>
-            <button class="chip ${this.periodPreset === 'month' ? 'active' : ''}" id="preset-month">Ce mois</button>
-            <button class="chip ${this.periodPreset === 'schoolyear' ? 'active' : ''}" id="preset-schoolyear">Année scolaire</button>
-          </div>
+        ${this.activeTab === 'students' ? `
+          <div style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 150px;">
+              <select id="historique-year-filter" class="search-input" style="min-height: 36px; padding: 4px 8px; font-size: 0.8rem; width: 100%;">
+                <option value="all">Toutes les années</option>
+                ${this.yearsList.map((yr) => `<option value="${yr}" ${this.yearFilter === yr ? 'selected' : ''}>${yr}</option>`).join('')}
+              </select>
+            </div>
 
-          <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-            <input type="date" id="historique-start-date" value="${this.startDate}" class="search-input" style="min-height: 36px; padding: 4px; font-size: 0.75rem; flex: 1;" />
-            <span style="font-size: var(--font-size-xs);">à</span>
-            <input type="date" id="historique-end-date" value="${this.endDate}" class="search-input" style="min-height: 36px; padding: 4px; font-size: 0.75rem; flex: 1;" />
-
-            <select id="historique-year-filter" class="search-input" style="min-height: 36px; padding: 4px; font-size: 0.75rem; flex: 1;">
-              <option value="all">Toutes les années</option>
-              ${this.yearsList.map((yr) => `<option value="${yr}" ${this.yearFilter === yr ? 'selected' : ''}>${yr}</option>`).join('')}
-            </select>
-
-            <label style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; white-space: nowrap;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; white-space: nowrap; cursor: pointer;">
               <input type="checkbox" id="historique-inactive-chk" ${this.includeInactive ? 'checked' : ''} />
-              Inactifs
+              <span>Inclure inactifs</span>
             </label>
           </div>
-        </div>
+        ` : ''}
 
         <!-- Vue contenu par Élève ou par Date -->
         ${this.activeTab === 'students'
@@ -218,12 +195,8 @@ export class HistoriqueView {
       }
     >();
 
-    // 1. Ajouter d'abord les événements connus dans la plage de date/type
+    // 1. Ajouter d'abord les événements connus
     for (const ev of this.events) {
-      if (this.startDate && ev.date < this.startDate) continue;
-      if (this.endDate && ev.date > this.endDate) continue;
-      if (this.typeFilter !== 'all' && ev.type !== this.typeFilter) continue;
-
       const groupKey = `${ev.date}_${ev.type}`;
       if (!sessionMap.has(groupKey)) {
         sessionMap.set(groupKey, {
@@ -269,7 +242,7 @@ export class HistoriqueView {
       <div style="display: flex; flex-direction: column; gap: 8px;">
         ${sessions.length === 0 ? `
           <div style="text-align: center; padding: 24px; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-md);">
-            Aucun pointage trouvé pour cette période.
+            Aucun pointage trouvé.
           </div>
         ` : sessions.map((s) => {
           const isPresence = s.type === 'presence';
@@ -297,7 +270,6 @@ export class HistoriqueView {
     `;
   }
 
-
   private attachEvents(
     statsMap: Map<string, StudentStats>
   ): void {
@@ -318,59 +290,6 @@ export class HistoriqueView {
           console.error(err);
           showToast('Erreur lors de l\'exportation Excel.');
         }
-      });
-    }
-
-    // Presets de période
-    const today = getTodayBrussels();
-    const presetAll = this.container.querySelector('#preset-all');
-    if (presetAll) {
-      presetAll.addEventListener('click', () => {
-        this.periodPreset = 'all';
-        this.startDate = '';
-        this.endDate = '';
-        this.loadDataAndRender();
-      });
-    }
-
-    const presetMonth = this.container.querySelector('#preset-month');
-    if (presetMonth) {
-      presetMonth.addEventListener('click', () => {
-        this.periodPreset = 'month';
-        const range = getMonthRange(today);
-        this.startDate = range.start;
-        this.endDate = range.end;
-        this.loadDataAndRender();
-      });
-    }
-
-    const presetSchoolYear = this.container.querySelector('#preset-schoolyear');
-    if (presetSchoolYear) {
-      presetSchoolYear.addEventListener('click', () => {
-        this.periodPreset = 'schoolyear';
-        const range = getSchoolYearRange(today);
-        this.startDate = range.start;
-        this.endDate = range.end;
-        this.loadDataAndRender();
-      });
-    }
-
-    // Champs de dates
-    const startInput = this.container.querySelector<HTMLInputElement>('#historique-start-date');
-    if (startInput) {
-      startInput.addEventListener('change', () => {
-        this.periodPreset = 'custom';
-        this.startDate = startInput.value;
-        this.loadDataAndRender();
-      });
-    }
-
-    const endInput = this.container.querySelector<HTMLInputElement>('#historique-end-date');
-    if (endInput) {
-      endInput.addEventListener('change', () => {
-        this.periodPreset = 'custom';
-        this.endDate = endInput.value;
-        this.loadDataAndRender();
       });
     }
 
