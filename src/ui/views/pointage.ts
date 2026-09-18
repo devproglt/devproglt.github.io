@@ -32,7 +32,7 @@ export class PointageView {
 
   private dayEvents: EventRecord[] = [];
   private activeEvent: EventRecord | null = null;
-  private isCreatingNewEvent = false;
+  private isCreatingNewEvent = true;
 
   private students: StudentRecord[] = [];
   private allActiveStudents: StudentRecord[] = [];
@@ -42,11 +42,12 @@ export class PointageView {
   constructor(container: HTMLElement, options: PointageViewOptions) {
     this.container = container;
     this.options = options;
+    this.isCreatingNewEvent = !options.eventId;
   }
 
   public async updateOptions(options: PointageViewOptions): Promise<void> {
     this.options = options;
-    this.isCreatingNewEvent = false;
+    this.isCreatingNewEvent = !options.eventId;
     await this.loadDataAndRender();
   }
 
@@ -59,12 +60,17 @@ export class PointageView {
     this.dayEvents = await getEventsByDate(this.options.date);
 
     // Sélection de l'événement actif
-    if (this.options.eventId) {
+    if (this.isCreatingNewEvent) {
+      this.activeEvent = null;
+      this.options.eventId = undefined;
+    } else if (this.options.eventId) {
       this.activeEvent = this.dayEvents.find((e) => e.id === this.options.eventId) || null;
-    }
-    if (!this.activeEvent && this.dayEvents.length > 0 && !this.isCreatingNewEvent) {
-      const matchType = this.dayEvents.find((e) => e.type === this.options.type);
-      this.activeEvent = matchType || this.dayEvents[0];
+      if (!this.activeEvent) {
+        this.isCreatingNewEvent = true;
+      }
+    } else {
+      this.isCreatingNewEvent = true;
+      this.activeEvent = null;
     }
 
     if (this.activeEvent) {
@@ -77,7 +83,7 @@ export class PointageView {
       applyAccentTheme(this.options.type);
     }
 
-    // Si aucun événement n'existe ou si l'utilisateur a cliqué sur "+ Nouvelle entrée"
+    // Si aucun événement n'existe ou si l'utilisateur est en mode création "+ Nouvelle entrée"
     if (!this.activeEvent || this.isCreatingNewEvent) {
       if (this.options.onCreationModeChange) {
         this.options.onCreationModeChange(true);
@@ -146,7 +152,7 @@ export class PointageView {
                 </select>
               ` : ''}
               <button class="btn btn-primary" id="pointage-validate-btn" style="min-height: 34px; padding: 0 12px; font-size: 0.8rem; font-weight: 700;">
-                Valider la séance
+                Valider les inscriptions
               </button>
               <button class="btn btn-secondary" id="pointage-add-event-btn" style="min-height: 34px; padding: 0 10px; font-size: 0.75rem;">
                 + Nouvelle entrée
@@ -652,18 +658,23 @@ export class PointageView {
     const validateBtn = this.container.querySelector('#pointage-validate-btn');
     if (validateBtn) {
       validateBtn.addEventListener('click', async () => {
-        showToast('Séance enregistrée !');
-        if (this.activeEvent && this.options.onValidateSession) {
-          this.options.onValidateSession(this.activeEvent.id, this.options.date, this.options.type);
-        } else {
-          this.activeEvent = null;
-          this.isCreatingNewEvent = true;
-          if (this.options.onCreationModeChange) {
-            this.options.onCreationModeChange(true);
-          }
-          await this.loadDataAndRender();
-          this.options.onRefreshNeeded();
+        showToast('Inscriptions validées !');
+        const evId = this.activeEvent?.id;
+        const evDate = this.options.date;
+        const evType = this.options.type;
+
+        this.activeEvent = null;
+        this.options.eventId = undefined;
+        this.isCreatingNewEvent = true;
+
+        if (this.options.onCreationModeChange) {
+          this.options.onCreationModeChange(true);
         }
+        if (evId && this.options.onValidateSession) {
+          this.options.onValidateSession(evId, evDate, evType);
+        }
+        await this.loadDataAndRender();
+        this.options.onRefreshNeeded();
       });
     }
 

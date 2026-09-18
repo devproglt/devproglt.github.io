@@ -2,7 +2,7 @@ import { db, type AttendanceRecord } from './schema';
 export type { AttendanceRecord };
 import { getDeviceId } from './meta';
 import { formatDateBrussels } from '../domain/dates';
-import { getOrCreateDefaultEvent } from './events';
+import { getOrCreateDefaultEvent, getEventsByDateAndType } from './events';
 
 /**
  * Bascule le statut de présence d'un élève pour un événement donné.
@@ -84,6 +84,7 @@ export async function normalizeAndRepairAttendances(): Promise<number> {
   const allAttendances = await db.attendances.toArray();
   const allStudents = await db.students.toArray();
   const validStudentMap = new Map(allStudents.map((s) => [s.id, s]));
+  const allowMultiple = await db.meta.get('allowMultipleSessionsPerDay').then((r) => Boolean(r?.value));
 
   const uniqueKeyMap = new Map<string, AttendanceRecord>();
   let duplicateCount = 0;
@@ -106,8 +107,15 @@ export async function normalizeAndRepairAttendances(): Promise<number> {
     const cleanType: 'presence' | 'course' = String(att.type).toLowerCase() === 'course' ? 'course' : 'presence';
     let eventId = att.eventId;
 
-    // Si pas d'eventId, rattacher à l'événement par défaut pour (date, type)
-    if (!eventId) {
+    if (!allowMultiple) {
+      const eventsForDateType = await getEventsByDateAndType(cleanDate, cleanType);
+      if (eventsForDateType.length > 0) {
+        eventId = eventsForDateType[0].id;
+      } else {
+        const defaultEvent = await getOrCreateDefaultEvent(cleanDate, cleanType);
+        eventId = defaultEvent.id;
+      }
+    } else if (!eventId) {
       const defaultEvent = await getOrCreateDefaultEvent(cleanDate, cleanType);
       eventId = defaultEvent.id;
     }

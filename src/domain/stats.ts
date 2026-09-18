@@ -36,6 +36,7 @@ export interface AttendanceRecord {
 
 /**
  * Calcule le résumé du jour pour un type de présence donné et une liste d'élèves.
+ * Garantit qu'un élève n'est compté qu'une seule fois par séance.
  */
 export function calculateDaySummary(
   attendances: AttendanceRecord[],
@@ -47,10 +48,13 @@ export function calculateDaySummary(
   let boys = 0;
   let internals = 0;
   const byYear: Record<string, { girls: number; boys: number; internals: number; total: number }> = {};
+  const seenStudentIds = new Set<string>();
 
   for (const att of attendances) {
     if (!att.present) continue;
     if (targetType && att.type !== targetType) continue;
+    if (seenStudentIds.has(att.studentId)) continue;
+    seenStudentIds.add(att.studentId);
 
     const student = studentsMap.get(att.studentId);
     if (!student) continue;
@@ -86,14 +90,19 @@ export function calculateDaySummary(
 
 /**
  * Calcule la synthèse de chaque élève (nombre de présences, courses, total et dernière date).
+ * Garantit qu'un pointage n'est comptabilisé qu'une fois par (élève, date, type).
  */
 export function calculateAllStudentStats(
   attendances: AttendanceRecord[]
 ): Map<string, StudentStats> {
   const statsMap = new Map<string, StudentStats>();
+  const seenRecords = new Set<string>();
 
   for (const att of attendances) {
     if (!att.present) continue;
+    const uniqueKey = `${att.studentId}_${att.date}_${att.type}`;
+    if (seenRecords.has(uniqueKey)) continue;
+    seenRecords.add(uniqueKey);
 
     let stat = statsMap.get(att.studentId);
     if (!stat) {
@@ -121,3 +130,4 @@ export function calculateAllStudentStats(
 
   return statsMap;
 }
+

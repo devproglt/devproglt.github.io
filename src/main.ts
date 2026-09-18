@@ -163,7 +163,7 @@ class App {
 
     // Route Pointage
     this.router.addRoute('#/pointage', async (_, params) => {
-      this.headerState.showTopo = true;
+      this.headerState.showTopo = Boolean(params.eventId);
       if (params.date) this.headerState.date = params.date;
       if (params.type && (params.type === 'presence' || params.type === 'course')) this.headerState.type = params.type;
       await this.updateDaySummaryHeader();
@@ -190,10 +190,9 @@ class App {
           this.headerState.showTopo = true;
           await this.updateDaySummaryHeader();
         },
-        onValidateSession: (eventId, date, type) => {
-          this.headerState.date = date;
-          this.headerState.type = type;
-          this.router.navigate(`#/jour?eventId=${eventId}&date=${date}&type=${type}`);
+        onValidateSession: (_eventId, _date, _type) => {
+          this.headerState.showTopo = false;
+          this.renderHeaderUI();
         },
       });
       pointageView.render();

@@ -1,6 +1,6 @@
 import { getMeta, setMeta, getDeviceId } from '../db/meta';
 import { getDirtyStudents, markStudentsSynced, deduplicateStudents } from '../db/students';
-import { getDirtyEvents, markEventsSynced } from '../db/events';
+import { getDirtyEvents, markEventsSynced, deduplicateEvents } from '../db/events';
 import { getDirtyAttendances, markAttendancesSynced, normalizeAndRepairAttendances } from '../db/attendances';
 import { formatDateBrussels } from '../domain/dates';
 import { db } from '../db/schema';
@@ -274,6 +274,7 @@ export class SyncEngine {
 
         // Déduplication et normalisation de sécurité finale
         await deduplicateStudents();
+        await deduplicateEvents();
         await normalizeAndRepairAttendances();
       }
 

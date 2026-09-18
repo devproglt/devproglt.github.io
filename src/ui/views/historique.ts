@@ -196,7 +196,16 @@ export class HistoriqueView {
   private renderDatesListHtml(attendances: AttendanceRecord[]): string {
     const eventsMap = new Map<string, EventRecord>(this.events.map((e) => [e.id, e]));
 
-    // Regroupement des pointages par session (eventId ou fallback date+type)
+    // Indexation des événements par date+type
+    const primaryEventByDateAndType = new Map<string, EventRecord>();
+    for (const ev of this.events) {
+      const k = `${ev.date}_${ev.type}`;
+      if (!primaryEventByDateAndType.has(k)) {
+        primaryEventByDateAndType.set(k, ev);
+      }
+    }
+
+    // Regroupement unifié des séances par date et type
     const sessionMap = new Map<
       string,
       {
@@ -205,7 +214,7 @@ export class HistoriqueView {
         date: string;
         type: 'presence' | 'course';
         title: string;
-        count: number;
+        studentSet: Set<string>;
       }
     >();
 
@@ -215,37 +224,46 @@ export class HistoriqueView {
       if (this.endDate && ev.date > this.endDate) continue;
       if (this.typeFilter !== 'all' && ev.type !== this.typeFilter) continue;
 
-      sessionMap.set(ev.id, {
-        id: ev.id,
-        eventId: ev.id,
-        date: ev.date,
-        type: ev.type,
-        title: ev.title || (ev.type === 'presence' ? STRINGS.types.presence : STRINGS.types.course),
-        count: 0,
-      });
+      const groupKey = `${ev.date}_${ev.type}`;
+      if (!sessionMap.has(groupKey)) {
+        sessionMap.set(groupKey, {
+          id: ev.id,
+          eventId: ev.id,
+          date: ev.date,
+          type: ev.type,
+          title: ev.title || (ev.type === 'presence' ? STRINGS.types.presence : STRINGS.types.course),
+          studentSet: new Set<string>(),
+        });
+      }
     }
 
-    // 2. Compter les présences
+    // 2. Compter les présences uniques par séance
     for (const att of attendances) {
-      const sessionKey = att.eventId || `${att.date}_${att.type}`;
-      let entry = sessionMap.get(sessionKey);
+      if (!att.present) continue;
+      const groupKey = `${att.date}_${att.type}`;
+      let entry = sessionMap.get(groupKey);
       if (!entry) {
-        const ev = att.eventId ? eventsMap.get(att.eventId) : null;
+        const ev = att.eventId ? eventsMap.get(att.eventId) : primaryEventByDateAndType.get(groupKey);
         entry = {
-          id: sessionKey,
-          eventId: att.eventId || undefined,
+          id: ev?.id || groupKey,
+          eventId: ev?.id || undefined,
           date: att.date,
           type: att.type,
           title: ev?.title || (att.type === 'presence' ? STRINGS.types.presence : STRINGS.types.course),
-          count: 0,
+          studentSet: new Set<string>(),
         };
-        sessionMap.set(sessionKey, entry);
+        sessionMap.set(groupKey, entry);
       }
-      entry.count++;
+      entry.studentSet.add(att.studentId);
     }
 
-    // Filtrer les sessions ayant au moins 1 présent ou étant un événement explicite
-    const sessions = Array.from(sessionMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+    // Sessions ordonnées par date décroissante
+    const sessions = Array.from(sessionMap.values())
+      .map((s) => ({
+        ...s,
+        count: s.studentSet.size,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date));
 
     return `
       <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -278,6 +296,7 @@ export class HistoriqueView {
       </div>
     `;
   }
+
 
   private attachEvents(
     statsMap: Map<string, StudentStats>

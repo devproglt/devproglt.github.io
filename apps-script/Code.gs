@@ -90,13 +90,18 @@ function handlePush(ss, request, configSheet) {
 
     // --- Processus PUSH pour les événements ---
     if (request.events && request.events.length > 0) {
-      const eventIndex = buildIdMap(eventsSheet);
+      const eventMaps = buildEventMaps(eventsSheet);
       for (let i = 0; i < request.events.length; i++) {
         const incoming = request.events[i];
         incoming.date = normalizeDateVal(incoming.date);
         incoming.type = incoming.type === 'course' ? 'course' : 'presence';
         
-        let rowIdx = eventIndex[incoming.id];
+        let rowIdx = eventMaps.idMap[incoming.id];
+        const dateTypeKey = incoming.date + '_' + incoming.type;
+        if (!rowIdx && eventMaps.dateTypeMap[dateTypeKey]) {
+          rowIdx = eventMaps.dateTypeMap[dateTypeKey].rowIdx;
+        }
+
         if (rowIdx) {
           const currentUpdatedAt = parseInt(eventsSheet.getRange(rowIdx, 7).getValue() || 0, 10);
           if (incoming.updatedAt >= currentUpdatedAt) {
@@ -108,7 +113,8 @@ function handlePush(ss, request, configSheet) {
         } else {
           appendEventRow(eventsSheet, incoming, nextSeq++);
           const lastRow = eventsSheet.getLastRow();
-          eventIndex[incoming.id] = lastRow;
+          eventMaps.idMap[incoming.id] = lastRow;
+          eventMaps.dateTypeMap[dateTypeKey] = { rowIdx: lastRow, id: incoming.id };
           accepted.push(incoming.id);
         }
       }
@@ -234,10 +240,11 @@ function handlePull(ss, request) {
       const id = String(row[0] || '').trim();
       const cleanDate = normalizeDateVal(row[1]);
       const cleanType = String(row[2] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
+      const eventKey = cleanDate + '_' + cleanType;
 
-      const existingEvent = pulledEventsMap[id];
+      const existingEvent = pulledEventsMap[eventKey];
       if (!existingEvent || updatedAt >= existingEvent.updatedAt) {
-        pulledEventsMap[id] = {
+        pulledEventsMap[eventKey] = {
           id: id,
           date: cleanDate,
           type: cleanType,
@@ -421,6 +428,27 @@ function buildStudentMaps(sheet) {
     }
   }
   return { idMap: idMap, nameMap: nameMap };
+}
+
+function buildEventMaps(sheet) {
+  const idMap = {};
+  const dateTypeMap = {};
+  const values = sheet.getDataRange().getValues();
+  for (let i = 1; i < values.length; i++) {
+    const id = String(values[i][0] || '').trim();
+    const date = normalizeDateVal(values[i][1]);
+    const type = String(values[i][2] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
+    if (id) {
+      idMap[id] = i + 1;
+    }
+    if (date) {
+      const key = date + '_' + type;
+      if (!dateTypeMap[key]) {
+        dateTypeMap[key] = { rowIdx: i + 1, id: id };
+      }
+    }
+  }
+  return { idMap: idMap, dateTypeMap: dateTypeMap };
 }
 
 // Utilitaires de feuilles et index
