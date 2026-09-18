@@ -9,6 +9,7 @@ export interface AttendanceSummaryStudent {
 
 export interface SummaryOptions {
   title: string;
+  description?: string;
   date: string;
   summary: DaySummary;
   students: AttendanceSummaryStudent[];
@@ -20,10 +21,13 @@ export interface SummaryOptions {
  * puis par prénom, puis par nom.
  */
 export function generateAttendanceSummaryText(options: SummaryOptions): string {
-  const { title, date, summary, students } = options;
+  const { title, description, date, summary, students } = options;
   const readableDate = formatReadableDate(date);
 
   let text = `Résumé : ${title} — ${readableDate}\n`;
+  if (description && description.trim()) {
+    text += `Remarques : ${description.trim()}\n`;
+  }
   text += `Total: ${summary.total} élève(s) (Filles: ${summary.girls}, Garçons: ${summary.boys}, Internes: ${summary.internals})\n\n`;
 
   text += `Répartition par année:\n`;

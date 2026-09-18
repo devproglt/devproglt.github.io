@@ -47,6 +47,13 @@ export class FicheView {
       getAllEvents(),
     ]);
     const eventsMap = new Map<string, EventRecord>(allEvents.map((e) => [e.id, e]));
+    const primaryEventByDateAndType = new Map<string, EventRecord>();
+    for (const ev of allEvents) {
+      const k = `${ev.date}_${ev.type}`;
+      if (!primaryEventByDateAndType.has(k)) {
+        primaryEventByDateAndType.set(k, ev);
+      }
+    }
     const presentAttendances = allAttendances.filter((a) => a.present);
 
     let presencesCount = 0;
@@ -151,18 +158,23 @@ export class FicheView {
                 const isPresence = att.type === 'presence';
                 const badgeColor = isPresence ? 'var(--accent-presence)' : 'var(--accent-course)';
                 const badgeBg = isPresence ? 'var(--accent-presence-light)' : 'var(--accent-course-light)';
-                const event = att.eventId ? eventsMap.get(att.eventId) : null;
+                const event = att.eventId ? eventsMap.get(att.eventId) : primaryEventByDateAndType.get(`${att.date}_${att.type}`);
                 const title = event ? event.title : (isPresence ? STRINGS.types.presence : STRINGS.types.course);
 
                 return `
-                  <div class="fiche-session-card" data-date="${att.date}" data-type="${att.type}" data-event-id="${att.eventId || ''}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-                    <div>
+                  <div class="fiche-session-card" data-date="${att.date}" data-type="${att.type}" data-event-id="${att.eventId || ''}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; gap: 8px;">
+                    <div style="flex: 1; min-width: 0;">
                       <div style="font-size: var(--font-size-sm); font-weight: 700; color: var(--text-primary);">${this.escapeHtml(title)}</div>
+                      ${event?.description ? `
+                        <div style="font-size: var(--font-size-xs); color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                          ${this.escapeHtml(event.description)}
+                        </div>
+                      ` : ''}
                       <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 2px;">
                         ${formatReadableDate(att.date)} • ${formatTimeBrussels(att.markedAt)}
                       </div>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 8px;">
+                    <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
                       <span style="background: ${badgeBg}; color: ${badgeColor}; padding: 4px 10px; border-radius: var(--radius-full); font-size: var(--font-size-xs); font-weight: 700;">
                         ${isPresence ? STRINGS.types.presence : STRINGS.types.course}
                       </span>

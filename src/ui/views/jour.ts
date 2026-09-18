@@ -108,6 +108,11 @@ export class JourView {
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
           <div>
             <h2 style="font-size: var(--font-size-lg); font-weight: 800;">${this.escapeHtml(eventTitle)}</h2>
+            ${this.currentEvent?.description ? `
+              <div style="font-size: var(--font-size-sm); color: var(--text-secondary); margin-top: 2px;">
+                ${this.escapeHtml(this.currentEvent.description)}
+              </div>
+            ` : ''}
             <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 2px;">
               ${formatReadableDate(this.options.date)}
             </div>
@@ -230,6 +235,7 @@ export class JourView {
       copyBtn.addEventListener('click', () => {
         const text = generateAttendanceSummaryText({
           title: eventTitle,
+          description: this.currentEvent?.description,
           date: this.options.date,
           summary,
           students: sortedPresentList.map((item) => item.student),

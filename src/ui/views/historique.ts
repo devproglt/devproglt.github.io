@@ -191,6 +191,7 @@ export class HistoriqueView {
         date: string;
         type: 'presence' | 'course';
         title: string;
+        description: string;
         studentSet: Set<string>;
       }
     >();
@@ -205,6 +206,7 @@ export class HistoriqueView {
           date: ev.date,
           type: ev.type,
           title: ev.title || (ev.type === 'presence' ? STRINGS.types.presence : STRINGS.types.course),
+          description: ev.description || '',
           studentSet: new Set<string>(),
         });
       }
@@ -223,6 +225,7 @@ export class HistoriqueView {
           date: att.date,
           type: att.type,
           title: ev?.title || (att.type === 'presence' ? STRINGS.types.presence : STRINGS.types.course),
+          description: ev?.description || '',
           studentSet: new Set<string>(),
         };
         sessionMap.set(groupKey, entry);
@@ -250,14 +253,19 @@ export class HistoriqueView {
           const badgeBg = isPresence ? 'var(--accent-presence-light)' : 'var(--accent-course-light)';
 
           return `
-            <div class="historique-date-card" data-date="${s.date}" data-type="${s.type}" data-event-id="${s.eventId || ''}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
-              <div>
+            <div class="historique-date-card" data-date="${s.date}" data-type="${s.type}" data-event-id="${s.eventId || ''}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; gap: 8px;">
+              <div style="flex: 1; min-width: 0;">
                 <div style="font-size: var(--font-size-base); font-weight: 700; color: var(--text-primary);">${this.escapeHtml(s.title)}</div>
+                ${s.description ? `
+                  <div style="font-size: var(--font-size-xs); color: var(--text-secondary); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    ${this.escapeHtml(s.description)}
+                  </div>
+                ` : ''}
                 <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 2px;">
                   ${formatReadableDate(s.date)}
                 </div>
               </div>
-              <div style="display: flex; align-items: center; gap: 10px;">
+              <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
                 <span style="background: ${badgeBg}; color: ${badgeColor}; padding: 4px 10px; border-radius: var(--radius-full); font-size: var(--font-size-xs); font-weight: 700;">
                   ${isPresence ? STRINGS.types.presence : STRINGS.types.course} (${s.count})
                 </span>

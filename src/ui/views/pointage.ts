@@ -139,6 +139,11 @@ export class PointageView {
                 <strong style="font-size: var(--font-size-base); color: var(--text-primary);">
                   ${this.escapeHtml(this.activeEvent.title)}
                 </strong>
+                ${this.activeEvent.description ? `
+                  <div style="font-size: var(--font-size-xs); color: var(--text-secondary); margin-top: 1px; max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                    ${this.escapeHtml(this.activeEvent.description)}
+                  </div>
+                ` : ''}
                 <div style="font-size: var(--font-size-xs); color: var(--text-muted);">
                   ${formatReadableDate(this.options.date)} • <span style="font-weight: 700; color: var(--accent-active);">${presentCount} présent(s)</span>
                 </div>
