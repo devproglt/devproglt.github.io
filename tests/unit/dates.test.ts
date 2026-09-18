@@ -8,6 +8,17 @@ describe('Domain: dates', () => {
     expect(formatted).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
+  it('normalise correctement différents formats de chaînes de date sans altérer l\'année', () => {
+    expect(formatDateBrussels('2026-09-18')).toBe('2026-09-18');
+    expect(formatDateBrussels('2026-9-1')).toBe('2026-09-01');
+    expect(formatDateBrussels('2026/09/18')).toBe('2026-09-18');
+    expect(formatDateBrussels('2026/9/1')).toBe('2026-09-01');
+    expect(formatDateBrussels('18/09/2026')).toBe('2026-09-18');
+    expect(formatDateBrussels('01/09/2026')).toBe('2026-09-01');
+    expect(formatDateBrussels('18/09/26')).toBe('2026-09-18');
+    expect(formatDateBrussels('2026-09-18T14:30:00.000Z')).toBe('2026-09-18');
+  });
+
   it('calcule la plage d\'année scolaire', () => {
     const rangeSept = getSchoolYearRange('2026-09-17');
     expect(rangeSept.start).toBe('2026-09-01');
@@ -24,9 +35,11 @@ describe('Domain: dates', () => {
     expect(range.end).toBe('2026-09-30');
   });
 
-  it('formate les dates lisibles sans crasher sur les valeurs inhabituelles', () => {
-    expect(formatReadableDate('2026-09-18')).toContain('septembre');
-    expect(formatReadableDate('18/09/2026')).toContain('septembre');
+  it('formate les dates lisibles sans crasher sur les valeurs inhabituelles et affiche la bonne année', () => {
+    expect(formatReadableDate('2026-09-18')).toContain('septembre 2026');
+    expect(formatReadableDate('18/09/2026')).toContain('septembre 2026');
+    expect(formatReadableDate('2026/09/18')).toContain('septembre 2026');
+    expect(formatReadableDate('01/09/2026')).toContain('septembre 2026');
     expect(formatReadableDate('')).toBe('');
     expect(formatReadableDate('date-invalide')).toBe('date-invalide');
   });

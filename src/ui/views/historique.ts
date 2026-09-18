@@ -3,6 +3,7 @@ import { showToast } from '../components/toast';
 import { renderSegmentedToggle, setupSegmentedToggleEvents } from '../components/toggle';
 import { getAllStudents, type StudentRecord } from '../../db/students';
 import { getAllAttendances, type AttendanceRecord } from '../../db/attendances';
+import { getAllEvents, type EventRecord } from '../../db/events';
 import { getYearsList } from '../../db/meta';
 import { calculateAllStudentStats, type StudentStats } from '../../domain/stats';
 import { formatReadableDate, getSchoolYearRange, getMonthRange, getTodayBrussels } from '../../domain/dates';
@@ -10,7 +11,7 @@ import { exportCurrentViewToExcel } from '../../io/export';
 
 export interface HistoriqueViewOptions {
   onStudentCardClick: (studentId: string) => void;
-  onInspectDateClick: (date: string, type?: 'presence' | 'course') => void;
+  onInspectDateClick: (date: string, type?: 'presence' | 'course', eventId?: string) => void;
 }
 
 export type SortField = 'lastName' | 'firstName' | 'year' | 'presences' | 'courses' | 'total';
@@ -33,6 +34,7 @@ export class HistoriqueView {
 
   private students: StudentRecord[] = [];
   private attendances: AttendanceRecord[] = [];
+  private events: EventRecord[] = [];
   private yearsList: string[] = [];
 
   constructor(container: HTMLElement, options: HistoriqueViewOptions) {
@@ -45,9 +47,17 @@ export class HistoriqueView {
   }
 
   private async loadDataAndRender(): Promise<void> {
-    this.yearsList = await getYearsList();
-    this.students = await getAllStudents();
-    this.attendances = await getAllAttendances();
+    const [years, students, attendances, events] = await Promise.all([
+      getYearsList(),
+      getAllStudents(),
+      getAllAttendances(),
+      getAllEvents(),
+    ]);
+
+    this.yearsList = years;
+    this.students = students;
+    this.attendances = attendances;
+    this.events = events;
 
     // Filtrage par période
     let filteredAttendances = this.attendances.filter((a) => a.present);
@@ -184,38 +194,82 @@ export class HistoriqueView {
   }
 
   private renderDatesListHtml(attendances: AttendanceRecord[]): string {
-    const datesMap = new Map<string, { presences: number; courses: number }>();
-    for (const att of attendances) {
-      let entry = datesMap.get(att.date);
-      if (!entry) {
-        entry = { presences: 0, courses: 0 };
-        datesMap.set(att.date, entry);
+    const eventsMap = new Map<string, EventRecord>(this.events.map((e) => [e.id, e]));
+
+    // Regroupement des pointages par session (eventId ou fallback date+type)
+    const sessionMap = new Map<
+      string,
+      {
+        id: string;
+        eventId?: string;
+        date: string;
+        type: 'presence' | 'course';
+        title: string;
+        count: number;
       }
-      if (att.type === 'presence') entry.presences++;
-      else if (att.type === 'course') entry.courses++;
+    >();
+
+    // 1. Ajouter d'abord les événements connus dans la plage de date/type
+    for (const ev of this.events) {
+      if (this.startDate && ev.date < this.startDate) continue;
+      if (this.endDate && ev.date > this.endDate) continue;
+      if (this.typeFilter !== 'all' && ev.type !== this.typeFilter) continue;
+
+      sessionMap.set(ev.id, {
+        id: ev.id,
+        eventId: ev.id,
+        date: ev.date,
+        type: ev.type,
+        title: ev.title || (ev.type === 'presence' ? STRINGS.types.presence : STRINGS.types.course),
+        count: 0,
+      });
     }
 
-    const sortedDates = Array.from(datesMap.keys()).sort().reverse();
+    // 2. Compter les présences
+    for (const att of attendances) {
+      const sessionKey = att.eventId || `${att.date}_${att.type}`;
+      let entry = sessionMap.get(sessionKey);
+      if (!entry) {
+        const ev = att.eventId ? eventsMap.get(att.eventId) : null;
+        entry = {
+          id: sessionKey,
+          eventId: att.eventId || undefined,
+          date: att.date,
+          type: att.type,
+          title: ev?.title || (att.type === 'presence' ? STRINGS.types.presence : STRINGS.types.course),
+          count: 0,
+        };
+        sessionMap.set(sessionKey, entry);
+      }
+      entry.count++;
+    }
+
+    // Filtrer les sessions ayant au moins 1 présent ou étant un événement explicite
+    const sessions = Array.from(sessionMap.values()).sort((a, b) => b.date.localeCompare(a.date));
 
     return `
       <div style="display: flex; flex-direction: column; gap: 8px;">
-        ${sortedDates.length === 0 ? `
+        ${sessions.length === 0 ? `
           <div style="text-align: center; padding: 24px; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-md);">
             Aucun pointage trouvé pour cette période.
           </div>
-        ` : sortedDates.map((dateStr) => {
-          const entry = datesMap.get(dateStr)!;
+        ` : sessions.map((s) => {
+          const isPresence = s.type === 'presence';
+          const badgeColor = isPresence ? 'var(--accent-presence)' : 'var(--accent-course)';
+          const badgeBg = isPresence ? 'var(--accent-presence-light)' : 'var(--accent-course-light)';
+
           return `
-            <div class="historique-date-card" data-date="${dateStr}" data-presences="${entry.presences}" data-courses="${entry.courses}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+            <div class="historique-date-card" data-date="${s.date}" data-type="${s.type}" data-event-id="${s.eventId || ''}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
               <div>
-                <div style="font-size: var(--font-size-base); font-weight: 600;">${formatReadableDate(dateStr)}</div>
-                <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 2px;">${dateStr}</div>
-              </div>
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="display: flex; gap: 8px; font-size: var(--font-size-sm); font-weight: 700;">
-                  <span style="color: var(--accent-presence); background: var(--accent-presence-light); padding: 2px 8px; border-radius: var(--radius-sm);">Prés. ${entry.presences}</span>
-                  <span style="color: var(--accent-course); background: var(--accent-course-light); padding: 2px 8px; border-radius: var(--radius-sm);">Cour. ${entry.courses}</span>
+                <div style="font-size: var(--font-size-base); font-weight: 700; color: var(--text-primary);">${this.escapeHtml(s.title)}</div>
+                <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 2px;">
+                  ${formatReadableDate(s.date)}
                 </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <span style="background: ${badgeBg}; color: ${badgeColor}; padding: 4px 10px; border-radius: var(--radius-full); font-size: var(--font-size-xs); font-weight: 700;">
+                  ${isPresence ? STRINGS.types.presence : STRINGS.types.course} (${s.count})
+                </span>
                 <span style="color: var(--text-muted); font-size: 0.9rem; font-weight: 700;">→</span>
               </div>
             </div>
@@ -341,15 +395,16 @@ export class HistoriqueView {
       });
     });
 
-    // Navigation cartes de dates
+    // Navigation cartes de dates / séances
     const dateCards = this.container.querySelectorAll<HTMLElement>('.historique-date-card');
     dateCards.forEach((card) => {
       card.addEventListener('click', () => {
         const dateStr = card.dataset.date;
-        const presCount = parseInt(card.dataset.presences || '0', 10);
-        const courCount = parseInt(card.dataset.courses || '0', 10);
-        const preferredType: 'presence' | 'course' = (courCount > 0 && presCount === 0) ? 'course' : 'presence';
-        if (dateStr) this.options.onInspectDateClick(dateStr, preferredType);
+        const type = (card.dataset.type || 'presence') as 'presence' | 'course';
+        const eventId = card.dataset.eventId || undefined;
+        if (dateStr) {
+          this.options.onInspectDateClick(dateStr, type, eventId);
+        }
       });
     });
   }

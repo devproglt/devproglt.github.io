@@ -1,22 +1,23 @@
 import { db, type AttendanceRecord } from './schema';
 export type { AttendanceRecord };
-import { buildAttendanceId } from '../domain/ids';
 import { getDeviceId } from './meta';
 import { formatDateBrussels } from '../domain/dates';
+import { getOrCreateDefaultEvent } from './events';
 
 /**
- * Bascule le statut de présence d'un élève pour une date et un type donnés.
+ * Bascule le statut de présence d'un élève pour un événement donné.
  * Si l'enregistrement n'existe pas, il est créé avec present = true.
  * S'il existe, present est basculé (true <-> false).
  */
 export async function toggleAttendance(
+  eventId: string,
   studentId: string,
   date: string,
   type: 'presence' | 'course',
   overridePresent?: boolean
 ): Promise<AttendanceRecord> {
   const normDate = formatDateBrussels(date);
-  const id = buildAttendanceId(studentId, normDate, type);
+  const id = `${eventId}_${studentId}`;
   const existing = await db.attendances.get(id);
   const now = Date.now();
   const deviceId = await getDeviceId();
@@ -25,6 +26,7 @@ export async function toggleAttendance(
 
   const record: AttendanceRecord = {
     id,
+    eventId,
     studentId,
     date: normDate,
     type,
@@ -37,6 +39,13 @@ export async function toggleAttendance(
 
   await db.attendances.put(record);
   return record;
+}
+
+/**
+ * Récupère tous les pointages pour un événement donné.
+ */
+export async function getAttendancesByEvent(eventId: string): Promise<AttendanceRecord[]> {
+  return await db.attendances.where('eventId').equals(eventId).toArray();
 }
 
 /**
@@ -67,9 +76,8 @@ export async function getAttendancesByStudent(studentId: string): Promise<Attend
 
 /**
  * Nettoie, dédoublonne et normalise tous les enregistrements de pointages en base locale :
- * - Garantit strictement 1 pointage max par élève / date / type
- * - Corrige les dates au format standard YYYY-MM-DD
- * - Harmonise les identifiants composites id = studentId_date_type
+ * - Garantit strictement 1 pointage max par élève et par événement
+ * - Rallie les anciens pointages sans eventId à un événement par défaut
  * - Purge tout résidu, orphelin ou ancien format
  */
 export async function normalizeAndRepairAttendances(): Promise<number> {
@@ -83,7 +91,7 @@ export async function normalizeAndRepairAttendances(): Promise<number> {
   for (const att of allAttendances) {
     const studentId = att.studentId;
     
-    // Si l'élève n'existe plus en base (orphelin issu d'anciens doublons), l'ignorer
+    // Si l'élève n'existe plus en base, l'ignorer
     if (!validStudentMap.has(studentId)) {
       duplicateCount++;
       continue;
@@ -96,14 +104,22 @@ export async function normalizeAndRepairAttendances(): Promise<number> {
     }
 
     const cleanType: 'presence' | 'course' = String(att.type).toLowerCase() === 'course' ? 'course' : 'presence';
-    const canonicalKey = `${studentId}_${cleanDate}_${cleanType}`;
+    let eventId = att.eventId;
 
+    // Si pas d'eventId, rattacher à l'événement par défaut pour (date, type)
+    if (!eventId) {
+      const defaultEvent = await getOrCreateDefaultEvent(cleanDate, cleanType);
+      eventId = defaultEvent.id;
+    }
+
+    const canonicalKey = `${eventId}_${studentId}`;
     const existing = uniqueKeyMap.get(canonicalKey);
 
     if (!existing) {
       uniqueKeyMap.set(canonicalKey, {
         ...att,
         id: canonicalKey,
+        eventId,
         studentId,
         date: cleanDate,
         type: cleanType,
@@ -112,7 +128,6 @@ export async function normalizeAndRepairAttendances(): Promise<number> {
       });
     } else {
       duplicateCount++;
-      // Fusionner : conserver le statut le plus récent ou si marqué présent
       const isAttNewer = (att.updatedAt || 0) > (existing.updatedAt || 0);
       const keepPresent = isAttNewer ? Boolean(att.present) : (existing.present || Boolean(att.present));
       const latestUpdatedAt = Math.max(att.updatedAt || 0, existing.updatedAt || 0);
@@ -122,6 +137,7 @@ export async function normalizeAndRepairAttendances(): Promise<number> {
       uniqueKeyMap.set(canonicalKey, {
         ...existing,
         id: canonicalKey,
+        eventId,
         present: keepPresent,
         updatedAt: latestUpdatedAt,
         markedAt: latestMarkedAt,
@@ -171,3 +187,4 @@ export async function markAttendancesSynced(ids: string[]): Promise<void> {
 export async function clearAllAttendances(): Promise<void> {
   await db.attendances.clear();
 }
+

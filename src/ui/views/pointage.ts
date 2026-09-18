@@ -5,15 +5,19 @@ import { renderSegmentedToggle, setupSegmentedToggleEvents } from '../components
 import { applyAccentTheme } from '../components/header';
 import { triggerHapticFeedback, showToast } from '../components/toast';
 import { getFilteredStudents, createStudent, type StudentRecord } from '../../db/students';
-import { getAttendancesByDateAndType, toggleAttendance } from '../../db/attendances';
+import { getAttendancesByEvent, toggleAttendance } from '../../db/attendances';
+import { getEventsByDate, createEvent, type EventRecord } from '../../db/events';
 import { getYearsList } from '../../db/meta';
+import { formatReadableDate } from '../../domain/dates';
 
 export interface PointageViewOptions {
   date: string;
   type: 'presence' | 'course';
+  eventId?: string;
   onStudentCardClick: (studentId: string) => void;
   onRefreshNeeded: () => void;
   onTypeChange?: (type: 'presence' | 'course') => void;
+  onEventChange?: (eventId: string) => void;
 }
 
 export class PointageView {
@@ -23,6 +27,10 @@ export class PointageView {
   private searchQuery = '';
   private selectedYears: string[] = ['all'];
   private selectedLetter = 'ALL';
+
+  private dayEvents: EventRecord[] = [];
+  private activeEvent: EventRecord | null = null;
+  private isCreatingNewEvent = false;
 
   private students: StudentRecord[] = [];
   private allActiveStudents: StudentRecord[] = [];
@@ -36,6 +44,7 @@ export class PointageView {
 
   public async updateOptions(options: PointageViewOptions): Promise<void> {
     this.options = options;
+    this.isCreatingNewEvent = false;
     await this.loadDataAndRender();
   }
 
@@ -44,10 +53,36 @@ export class PointageView {
   }
 
   private async loadDataAndRender(): Promise<void> {
-    applyAccentTheme(this.options.type);
     this.yearsList = await getYearsList();
+    this.dayEvents = await getEventsByDate(this.options.date);
 
-    const attendances = await getAttendancesByDateAndType(this.options.date, this.options.type);
+    // Sélection de l'événement actif
+    if (this.options.eventId) {
+      this.activeEvent = this.dayEvents.find((e) => e.id === this.options.eventId) || null;
+    }
+    if (!this.activeEvent && this.dayEvents.length > 0) {
+      const matchType = this.dayEvents.find((e) => e.type === this.options.type);
+      this.activeEvent = matchType || this.dayEvents[0];
+    }
+
+    if (this.activeEvent) {
+      this.options.type = this.activeEvent.type;
+      applyAccentTheme(this.activeEvent.type);
+      if (this.options.onTypeChange) {
+        this.options.onTypeChange(this.activeEvent.type);
+      }
+    } else {
+      applyAccentTheme(this.options.type);
+    }
+
+    // Si aucun événement n'existe ou si l'utilisateur a cliqué sur "Nouvelle séance"
+    if (!this.activeEvent || this.isCreatingNewEvent) {
+      this.renderEventCreationForm();
+      return;
+    }
+
+    // Récupérer les pointages de la séance active
+    const attendances = await getAttendancesByEvent(this.activeEvent.id);
     this.attendanceMap.clear();
     for (const att of attendances) {
       if (att.present) {
@@ -64,14 +99,6 @@ export class PointageView {
       initialLetter: this.selectedLetter,
     });
 
-    const typeToggleHtml = renderSegmentedToggle(
-      [
-        { value: 'presence', label: STRINGS.types.presence },
-        { value: 'course', label: STRINGS.types.course },
-      ],
-      this.options.type
-    );
-
     const availableLetters = computeAvailableLetters(
       this.selectedYears.includes('all')
         ? this.allActiveStudents
@@ -81,12 +108,40 @@ export class PointageView {
           })
     );
 
+    const presentCount = this.attendanceMap.size;
+    const isPresence = this.activeEvent.type === 'presence';
+
     this.container.innerHTML = `
-      <div style="padding: 12px 16px;">
-        <div style="margin-bottom: 12px;">
-          ${typeToggleHtml}
+      <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 12px;">
+        <!-- Bannière de la séance active -->
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 12px 14px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 1.1rem;">${isPresence ? '🏃' : '🏆'}</span>
+              <div>
+                <strong style="font-size: var(--font-size-base); color: var(--text-primary);">
+                  ${this.escapeHtml(this.activeEvent.title)}
+                </strong>
+                <div style="font-size: var(--font-size-xs); color: var(--text-muted);">
+                  ${formatReadableDate(this.options.date)} • <span style="font-weight: 700; color: var(--accent-active);">${presentCount} présent(s)</span>
+                </div>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 6px;">
+              ${this.dayEvents.length > 1 ? `
+                <select id="pointage-event-select" class="search-input" style="width: auto; min-height: 34px; padding: 0 8px; font-size: 0.75rem;">
+                  ${this.dayEvents.map((ev) => `<option value="${ev.id}" ${ev.id === this.activeEvent?.id ? 'selected' : ''}>${ev.type === 'presence' ? '🏃' : '🏆'} ${this.escapeHtml(ev.title)}</option>`).join('')}
+                </select>
+              ` : ''}
+              <button class="btn btn-secondary" id="pointage-add-event-btn" style="min-height: 34px; padding: 0 10px; font-size: 0.75rem;">
+                ➕ Séance
+              </button>
+            </div>
+          </div>
         </div>
 
+        <!-- Filtres et recherche -->
         <div class="filter-section">
           <div class="search-bar">
             <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 14z"/></svg>
@@ -99,13 +154,114 @@ export class PointageView {
           <div id="pointage-az-bar">${renderAZBar(availableLetters, this.selectedLetter)}</div>
         </div>
 
-        <div class="student-list" id="pointage-student-list" style="margin-top: 12px; padding: 0;">
+        <div class="student-list" id="pointage-student-list" style="padding: 0;">
           ${this.renderStudentListHtml()}
         </div>
       </div>
     `;
 
     this.attachEvents();
+  }
+
+  private renderEventCreationForm(): void {
+    const isPresence = this.options.type === 'presence';
+    const hasExistingEvents = this.dayEvents.length > 0;
+
+    const typeToggleHtml = renderSegmentedToggle(
+      [
+        { value: 'presence', label: STRINGS.types.presence },
+        { value: 'course', label: STRINGS.types.course },
+      ],
+      this.options.type
+    );
+
+    this.container.innerHTML = `
+      <div style="padding: 20px 16px; display: flex; flex-direction: column; gap: 16px;">
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="font-size: var(--font-size-base); font-weight: 700;">
+              ✨ Nouvelle séance pour le ${formatReadableDate(this.options.date)}
+            </h3>
+            ${hasExistingEvents ? `
+              <button class="btn btn-secondary" id="pointage-cancel-create-btn" style="min-height: 32px; padding: 0 10px; font-size: 0.75rem;">
+                Annuler
+              </button>
+            ` : ''}
+          </div>
+
+          <div>
+            <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 6px;">
+              Type de séance
+            </label>
+            ${typeToggleHtml}
+          </div>
+
+          <div>
+            <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 6px;">
+              Titre / Nom de la séance
+            </label>
+            <input type="text" id="pointage-create-title" class="search-input" placeholder="${isPresence ? 'ex: Entraînement standard, Demi-fond, Piste...' : 'ex: Cross de rentrée, Compétition provinciale...'}" />
+          </div>
+
+          <div>
+            <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 6px;">
+              Notes / Remarques (Optionnel)
+            </label>
+            <input type="text" id="pointage-create-desc" class="search-input" placeholder="ex: Séance en extérieur, météo pluvieuse..." />
+          </div>
+
+          <button class="btn btn-primary" id="pointage-start-session-btn" style="width: 100%; min-height: 44px; margin-top: 6px; font-size: 0.95rem; font-weight: 700;">
+            🚀 Démarrer le pointage de cette séance
+          </button>
+        </div>
+      </div>
+    `;
+
+    setupSegmentedToggleEvents(this.container, (val) => {
+      const newType = val as 'presence' | 'course';
+      this.options.type = newType;
+      const titleInput = this.container.querySelector<HTMLInputElement>('#pointage-create-title');
+      if (titleInput && !titleInput.value) {
+        titleInput.placeholder = newType === 'presence'
+          ? 'ex: Entraînement standard, Demi-fond, Piste...'
+          : 'ex: Cross de rentrée, Compétition provinciale...';
+      }
+      applyAccentTheme(newType);
+    });
+
+    const cancelBtn = this.container.querySelector('#pointage-cancel-create-btn');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => {
+        this.isCreatingNewEvent = false;
+        this.loadDataAndRender();
+      });
+    }
+
+    const startBtn = this.container.querySelector('#pointage-start-session-btn');
+    if (startBtn) {
+      startBtn.addEventListener('click', async () => {
+        const titleInput = this.container.querySelector<HTMLInputElement>('#pointage-create-title');
+        const descInput = this.container.querySelector<HTMLInputElement>('#pointage-create-desc');
+        const customTitle = titleInput ? titleInput.value.trim() : '';
+        const customDesc = descInput ? descInput.value.trim() : '';
+
+        const newEvent = await createEvent({
+          date: this.options.date,
+          type: this.options.type,
+          title: customTitle,
+          description: customDesc,
+        });
+
+        showToast(`Séance « ${newEvent.title} » créée !`);
+        this.activeEvent = newEvent;
+        this.isCreatingNewEvent = false;
+        if (this.options.onEventChange) {
+          this.options.onEventChange(newEvent.id);
+        }
+        await this.loadDataAndRender();
+        this.options.onRefreshNeeded();
+      });
+    }
   }
 
   private renderStudentListHtml(): string {
@@ -180,10 +336,15 @@ export class PointageView {
     cards.forEach((card) => {
       card.addEventListener('click', async () => {
         const studentId = card.dataset.studentId;
-        if (!studentId) return;
+        if (!studentId || !this.activeEvent) return;
 
         triggerHapticFeedback();
-        const newRecord = await toggleAttendance(studentId, this.options.date, this.options.type);
+        const newRecord = await toggleAttendance(
+          this.activeEvent.id,
+          studentId,
+          this.options.date,
+          this.activeEvent.type
+        );
         this.attendanceMap.set(studentId, newRecord.present);
 
         if (newRecord.present) {
@@ -207,6 +368,7 @@ export class PointageView {
     const quickAddBtn = this.container.querySelector('#pointage-add-quick');
     if (quickAddBtn) {
       quickAddBtn.addEventListener('click', async () => {
+        if (!this.activeEvent) return;
         const typedName = this.searchQuery.trim();
         const parts = typedName.split(' ');
         const firstName = parts[0] || typedName;
@@ -221,8 +383,8 @@ export class PointageView {
           active: true,
         });
 
-        await toggleAttendance(newStudent.id, this.options.date, this.options.type, true);
-        showToast(`Élève ${firstName} créé et marqué présent !`);
+        await toggleAttendance(this.activeEvent.id, newStudent.id, this.options.date, this.activeEvent.type, true);
+        showToast(`Élève ${firstName} créé et pointé !`);
         this.searchQuery = '';
         await this.loadDataAndRender();
         this.options.onRefreshNeeded();
@@ -231,15 +393,30 @@ export class PointageView {
   }
 
   private attachEvents(): void {
-    setupSegmentedToggleEvents(this.container, (val) => {
-      const newType = val as 'presence' | 'course';
-      this.options.type = newType;
-      if (this.options.onTypeChange) {
-        this.options.onTypeChange(newType);
-      }
-      this.loadDataAndRender();
-      this.options.onRefreshNeeded();
-    });
+    const addEventBtn = this.container.querySelector('#pointage-add-event-btn');
+    if (addEventBtn) {
+      addEventBtn.addEventListener('click', () => {
+        this.isCreatingNewEvent = true;
+        this.renderEventCreationForm();
+      });
+    }
+
+    const eventSelect = this.container.querySelector<HTMLSelectElement>('#pointage-event-select');
+    if (eventSelect) {
+      eventSelect.addEventListener('change', async () => {
+        const selectedId = eventSelect.value;
+        this.activeEvent = this.dayEvents.find((e) => e.id === selectedId) || null;
+        if (this.activeEvent) {
+          this.options.eventId = this.activeEvent.id;
+          this.options.type = this.activeEvent.type;
+          if (this.options.onEventChange) {
+            this.options.onEventChange(this.activeEvent.id);
+          }
+          await this.loadDataAndRender();
+          this.options.onRefreshNeeded();
+        }
+      });
+    }
 
     const searchInput = this.container.querySelector<HTMLInputElement>('#pointage-search');
     if (searchInput) {

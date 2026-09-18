@@ -22,17 +22,35 @@ export function formatDateBrussels(dateInput: Date | number | string): string {
       if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
         return trimmed;
       }
+      if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(trimmed)) {
+        const parts = trimmed.split('-');
+        return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
       if (trimmed.includes('/')) {
         const parts = trimmed.split('/');
         if (parts.length === 3) {
+          // Check if format is YYYY/MM/DD
+          if (parts[0].length === 4) {
+            const y = parts[0];
+            const m = parts[1].padStart(2, '0');
+            const d = parts[2].padStart(2, '0');
+            return `${y}-${m}-${d}`;
+          }
+          // Format DD/MM/YYYY or DD/MM/YY
           const d = parts[0].padStart(2, '0');
           const m = parts[1].padStart(2, '0');
-          const y = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
+          let y = parts[2];
+          if (y.length === 2) {
+            y = `20${y}`;
+          }
           return `${y}-${m}-${d}`;
         }
       }
       if (trimmed.includes('T')) {
-        return trimmed.substring(0, 10);
+        const sub = trimmed.substring(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(sub)) {
+          return sub;
+        }
       }
     }
 
@@ -85,24 +103,12 @@ export function formatReadableDate(dateInput: string | Date | number): string {
     let date: Date;
     if (typeof dateInput === 'string') {
       const trimmed = dateInput.trim();
-      if (trimmed.includes('/')) {
-        const parts = trimmed.split('/');
-        if (parts.length === 3) {
-          // Format DD/MM/YYYY
-          date = new Date(Date.UTC(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]), 12, 0, 0));
-        } else {
-          date = new Date(trimmed);
-        }
-      } else if (trimmed.includes('-')) {
-        const parts = trimmed.substring(0, 10).split('-').map(Number);
-        if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
-          date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0));
-        } else {
-          date = new Date(trimmed);
-        }
+      const normalized = formatDateBrussels(trimmed);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+        const [year, month, day] = normalized.split('-').map(Number);
+        date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
       } else {
-        const num = Number(trimmed);
-        date = isNaN(num) ? new Date(trimmed) : new Date(num);
+        date = new Date(trimmed);
       }
     } else {
       date = new Date(dateInput);

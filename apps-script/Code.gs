@@ -49,6 +49,7 @@ function handlePush(ss, request, configSheet) {
 
   try {
     const studentsSheet = getOrCreateSheet(ss, 'students');
+    const eventsSheet = getOrCreateSheet(ss, 'events');
     const attendancesSheet = getOrCreateSheet(ss, 'attendances');
     const logSheet = getOrCreateSheet(ss, 'log');
 
@@ -64,7 +65,6 @@ function handlePush(ss, request, configSheet) {
         const incoming = request.students[i];
         let rowIdx = maps.idMap[incoming.id];
         
-        // Si non trouvé par ID, chercher par Nom + Prénom + Classe pour éviter tout doublon
         const nameKey = normalizeStr(incoming.lastName) + '_' + normalizeStr(incoming.firstName) + '_' + normalizeStr(incoming.year);
         if (!rowIdx && maps.nameMap[nameKey]) {
           rowIdx = maps.nameMap[nameKey].rowIdx;
@@ -88,6 +88,32 @@ function handlePush(ss, request, configSheet) {
       }
     }
 
+    // --- Processus PUSH pour les événements ---
+    if (request.events && request.events.length > 0) {
+      const eventIndex = buildIdMap(eventsSheet);
+      for (let i = 0; i < request.events.length; i++) {
+        const incoming = request.events[i];
+        incoming.date = normalizeDateVal(incoming.date);
+        incoming.type = incoming.type === 'course' ? 'course' : 'presence';
+        
+        let rowIdx = eventIndex[incoming.id];
+        if (rowIdx) {
+          const currentUpdatedAt = parseInt(eventsSheet.getRange(rowIdx, 7).getValue() || 0, 10);
+          if (incoming.updatedAt >= currentUpdatedAt) {
+            updateEventRow(eventsSheet, rowIdx, incoming, nextSeq++);
+            accepted.push(incoming.id);
+          } else {
+            rejected.push(incoming.id);
+          }
+        } else {
+          appendEventRow(eventsSheet, incoming, nextSeq++);
+          const lastRow = eventsSheet.getLastRow();
+          eventIndex[incoming.id] = lastRow;
+          accepted.push(incoming.id);
+        }
+      }
+    }
+
     // --- Processus PUSH pour les pointages ---
     if (request.attendances && request.attendances.length > 0) {
       const attendanceIndex = buildAttendanceKeyMap(attendancesSheet);
@@ -95,16 +121,19 @@ function handlePush(ss, request, configSheet) {
         const incoming = request.attendances[i];
         const cleanDate = normalizeDateVal(incoming.date);
         const cleanType = incoming.type === 'course' ? 'course' : 'presence';
-        const key = incoming.studentId + '_' + cleanDate + '_' + cleanType;
+        const eventId = incoming.eventId || (cleanDate + '_' + cleanType);
+        const studentId = incoming.studentId;
+        const key = eventId + '_' + studentId;
         
         let rowIdx = attendanceIndex[incoming.id] || attendanceIndex[key];
 
         incoming.date = cleanDate;
         incoming.type = cleanType;
+        incoming.eventId = eventId;
         incoming.id = key;
 
         if (rowIdx) {
-          const currentUpdatedAt = parseInt(attendancesSheet.getRange(rowIdx, 8).getValue() || 0, 10);
+          const currentUpdatedAt = parseInt(attendancesSheet.getRange(rowIdx, 9).getValue() || 0, 10);
           if (incoming.updatedAt >= currentUpdatedAt) {
             updateAttendanceRow(attendancesSheet, rowIdx, incoming, nextSeq++);
             accepted.push(incoming.id);
@@ -125,7 +154,7 @@ function handlePush(ss, request, configSheet) {
     setConfigValue(configSheet, 'nextSeq', nextSeq);
 
     // Enregistrement dans le journal
-    const totalLines = (request.students ? request.students.length : 0) + (request.attendances ? request.attendances.length : 0);
+    const totalLines = (request.students ? request.students.length : 0) + (request.events ? request.events.length : 0) + (request.attendances ? request.attendances.length : 0);
     logSheet.appendRow([new Date().toISOString(), request.deviceId || 'inconnu', 'push', totalLines]);
 
     return jsonResponse({ ok: true, accepted: accepted, rejected: rejected });
@@ -136,6 +165,7 @@ function handlePush(ss, request, configSheet) {
 
 function handlePull(ss, request) {
   const studentsSheet = getOrCreateSheet(ss, 'students');
+  const eventsSheet = getOrCreateSheet(ss, 'events');
   const attendancesSheet = getOrCreateSheet(ss, 'attendances');
   const configSheet = getOrCreateSheet(ss, 'config');
 
@@ -144,15 +174,12 @@ function handlePull(ss, request) {
 
   const pulledStudentsMap = {};
   const studentValues = studentsSheet.getDataRange().getValues();
-  // Ligne 1 = en-têtes
   for (let i = 1; i < studentValues.length; i++) {
     const row = studentValues[i];
-    if (!row[0] && !row[1] && !row[2]) continue; // Ligne vide
+    if (!row[0] && !row[1] && !row[2]) continue;
 
     let seq = parseInt(row[10], 10);
-    if (isNaN(seq)) {
-      seq = i; // Fallback pour les lignes ajoutées manuellement
-    }
+    if (isNaN(seq)) seq = i;
 
     if (since === 0 || seq > since) {
       let activeVal = row[5];
@@ -162,14 +189,10 @@ function handlePull(ss, request) {
       }
 
       let id = String(row[0] || '').trim();
-      if (!id) {
-        id = Utilities.getUuid();
-      }
+      if (!id) id = Utilities.getUuid();
 
       let updatedAt = parseInt(row[8], 10);
-      if (isNaN(updatedAt) || updatedAt <= 0) {
-        updatedAt = Date.now();
-      }
+      if (isNaN(updatedAt) || updatedAt <= 0) updatedAt = Date.now();
 
       const lastName = String(row[1] || '').trim();
       const firstName = String(row[2] || '').trim();
@@ -195,29 +218,82 @@ function handlePull(ss, request) {
     }
   }
 
+  const pulledEventsMap = {};
+  const eventValues = eventsSheet.getDataRange().getValues();
+  for (let i = 1; i < eventValues.length; i++) {
+    const row = eventValues[i];
+    if (!row[0] && !row[1]) continue;
+
+    let seq = parseInt(row[7], 10);
+    if (isNaN(seq)) seq = i;
+
+    if (since === 0 || seq > since) {
+      let updatedAt = parseInt(row[6], 10);
+      if (isNaN(updatedAt) || updatedAt <= 0) updatedAt = Date.now();
+
+      const id = String(row[0] || '').trim();
+      const cleanDate = normalizeDateVal(row[1]);
+      const cleanType = String(row[2] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
+
+      const existingEvent = pulledEventsMap[id];
+      if (!existingEvent || updatedAt >= existingEvent.updatedAt) {
+        pulledEventsMap[id] = {
+          id: id,
+          date: cleanDate,
+          type: cleanType,
+          title: String(row[3] || (cleanType === 'course' ? 'Course' : 'Entraînement standard')),
+          description: String(row[4] || ''),
+          createdAt: String(row[5] || new Date().toISOString()),
+          updatedAt: updatedAt,
+        };
+      }
+    }
+  }
+
   const pulledAttendancesMap = {};
   const attendanceValues = attendancesSheet.getDataRange().getValues();
   for (let i = 1; i < attendanceValues.length; i++) {
     const row = attendanceValues[i];
     if (!row[0] && !row[1]) continue;
 
-    let seq = parseInt(row[8], 10);
-    if (isNaN(seq)) {
-      seq = i;
-    }
+    let seq = parseInt(row[9] || row[8], 10);
+    if (isNaN(seq)) seq = i;
 
     if (since === 0 || seq > since) {
-      let updatedAt = parseInt(row[7], 10);
-      if (isNaN(updatedAt) || updatedAt <= 0) {
-        updatedAt = Date.now();
+      let updatedAt = parseInt(row[8] || row[7], 10);
+      if (isNaN(updatedAt) || updatedAt <= 0) updatedAt = Date.now();
+
+      let eventId = '';
+      let studentId = '';
+      let cleanDate = '';
+      let cleanType = 'presence';
+      let presentVal = true;
+      let markedAt = 0;
+      let deviceId = '';
+
+      if (row.length >= 10) {
+        // Nouveau format : id, eventId, studentId, date, type, present, markedAt, deviceId, updatedAt, seq
+        eventId = String(row[1] || '').trim();
+        studentId = String(row[2] || '').trim();
+        cleanDate = normalizeDateVal(row[3]);
+        cleanType = String(row[4] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
+        presentVal = row[5];
+        markedAt = parseInt(row[6] || 0, 10);
+        deviceId = String(row[7] || '');
+      } else {
+        // Ancien format : id, studentId, date, type, present, markedAt, deviceId, updatedAt, seq
+        studentId = String(row[1] || '').trim();
+        cleanDate = normalizeDateVal(row[2]);
+        cleanType = String(row[3] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
+        eventId = cleanDate + '_' + cleanType;
+        presentVal = row[4];
+        markedAt = parseInt(row[5] || 0, 10);
+        deviceId = String(row[6] || '');
       }
 
-      const studentId = String(row[1] || '').trim();
-      const cleanDate = normalizeDateVal(row[2]);
-      const cleanType = String(row[3] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
-      const attKey = studentId + '_' + cleanDate + '_' + cleanType;
+      if (!eventId) eventId = cleanDate + '_' + cleanType;
+      const attKey = eventId + '_' + studentId;
 
-      let presentVal = row[4];
       let present = true;
       if (presentVal === false || String(presentVal).trim().toLowerCase() === 'false' || String(presentVal).trim().toLowerCase() === 'faux' || String(presentVal).trim() === '0') {
         present = false;
@@ -227,12 +303,13 @@ function handlePull(ss, request) {
       if (!existingAtt || updatedAt >= existingAtt.updatedAt) {
         pulledAttendancesMap[attKey] = {
           id: attKey,
+          eventId: eventId,
           studentId: studentId,
           date: cleanDate,
           type: cleanType,
           present: present,
-          markedAt: parseInt(row[5] || 0, 10),
-          deviceId: String(row[6] || ''),
+          markedAt: markedAt,
+          deviceId: deviceId,
           updatedAt: updatedAt,
         };
       }
@@ -240,11 +317,13 @@ function handlePull(ss, request) {
   }
 
   const pulledStudents = Object.keys(pulledStudentsMap).map(function(k) { return pulledStudentsMap[k]; });
+  const pulledEvents = Object.keys(pulledEventsMap).map(function(k) { return pulledEventsMap[k]; });
   const pulledAttendances = Object.keys(pulledAttendancesMap).map(function(k) { return pulledAttendancesMap[k]; });
 
   return jsonResponse({
     ok: true,
     students: pulledStudents,
+    events: pulledEvents,
     attendances: pulledAttendances,
     cursor: currentNextSeq,
   });
@@ -259,12 +338,27 @@ function normalizeDateVal(val) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
     return str;
   }
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(str)) {
+    const parts = str.split('-');
+    const m = parts[1].length === 1 ? '0' + parts[1] : parts[1];
+    const d = parts[2].length === 1 ? '0' + parts[2] : parts[2];
+    return parts[0] + '-' + m + '-' + d;
+  }
   if (str.indexOf('T') !== -1) {
-    return str.substring(0, 10);
+    const sub = str.substring(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(sub)) {
+      return sub;
+    }
   }
   if (str.indexOf('/') !== -1) {
     const parts = str.split('/');
     if (parts.length === 3) {
+      if (parts[0].length === 4) {
+        const y = parts[0];
+        const m = parts[1].length === 1 ? '0' + parts[1] : parts[1];
+        const d = parts[2].length === 1 ? '0' + parts[2] : parts[2];
+        return y + '-' + m + '-' + d;
+      }
       const d = parts[0].length === 1 ? '0' + parts[0] : parts[0];
       const m = parts[1].length === 1 ? '0' + parts[1] : parts[1];
       const y = parts[2].length === 2 ? '20' + parts[2] : parts[2];
@@ -284,15 +378,19 @@ function buildAttendanceKeyMap(sheet) {
   const map = {};
   const values = sheet.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
-    const id = String(values[i][0] || '').trim();
-    const studentId = String(values[i][1] || '').trim();
-    const date = normalizeDateVal(values[i][2]);
-    const type = String(values[i][3] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
-    if (id) {
-      map[id] = i + 1;
-    }
-    if (studentId && date) {
-      map[studentId + '_' + date + '_' + type] = i + 1;
+    const row = values[i];
+    const id = String(row[0] || '').trim();
+    if (row.length >= 10) {
+      const eventId = String(row[1] || '').trim();
+      const studentId = String(row[2] || '').trim();
+      if (id) map[id] = i + 1;
+      if (eventId && studentId) map[eventId + '_' + studentId] = i + 1;
+    } else {
+      const studentId = String(row[1] || '').trim();
+      const date = normalizeDateVal(row[2]);
+      const type = String(row[3] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
+      if (id) map[id] = i + 1;
+      if (studentId && date) map[studentId + '_' + date + '_' + type] = i + 1;
     }
   }
   return map;
@@ -330,7 +428,7 @@ function buildIdMap(sheet) {
   const map = {};
   const values = sheet.getDataRange().getValues();
   for (let i = 1; i < values.length; i++) {
-    const id = String(values[i][0]);
+    const id = String(values[i][0] || '').trim();
     if (id) {
       map[id] = i + 1; // 1-based row index
     }
@@ -346,12 +444,20 @@ function updateStudentRow(sheet, rowIdx, s, seq) {
   sheet.getRange(rowIdx, 1, 1, 11).setValues([[s.id, s.lastName, s.firstName, s.gender, s.year, s.active, s.notes || '', s.createdAt, s.updatedAt, s.isInternal ? true : false, seq]]);
 }
 
+function appendEventRow(sheet, e, seq) {
+  sheet.appendRow([e.id, e.date, e.type, e.title || '', e.description || '', e.createdAt, e.updatedAt, seq]);
+}
+
+function updateEventRow(sheet, rowIdx, e, seq) {
+  sheet.getRange(rowIdx, 1, 1, 8).setValues([[e.id, e.date, e.type, e.title || '', e.description || '', e.createdAt, e.updatedAt, seq]]);
+}
+
 function appendAttendanceRow(sheet, a, seq) {
-  sheet.appendRow([a.id, a.studentId, a.date, a.type, a.present, a.markedAt, a.deviceId, a.updatedAt, seq]);
+  sheet.appendRow([a.id, a.eventId || (a.date + '_' + a.type), a.studentId, a.date, a.type, a.present, a.markedAt, a.deviceId, a.updatedAt, seq]);
 }
 
 function updateAttendanceRow(sheet, rowIdx, a, seq) {
-  sheet.getRange(rowIdx, 1, 1, 9).setValues([[a.id, a.studentId, a.date, a.type, a.present, a.markedAt, a.deviceId, a.updatedAt, seq]]);
+  sheet.getRange(rowIdx, 1, 1, 10).setValues([[a.id, a.eventId || (a.date + '_' + a.type), a.studentId, a.date, a.type, a.present, a.markedAt, a.deviceId, a.updatedAt, seq]]);
 }
 
 function getOrCreateSheet(ss, name) {
@@ -360,8 +466,10 @@ function getOrCreateSheet(ss, name) {
     sheet = ss.insertSheet(name);
     if (name === 'students') {
       sheet.appendRow(['id', 'lastName', 'firstName', 'gender', 'year', 'active', 'notes', 'createdAt', 'updatedAt', 'isInternal', 'seq']);
+    } else if (name === 'events') {
+      sheet.appendRow(['id', 'date', 'type', 'title', 'description', 'createdAt', 'updatedAt', 'seq']);
     } else if (name === 'attendances') {
-      sheet.appendRow(['id', 'studentId', 'date', 'type', 'present', 'markedAt', 'deviceId', 'updatedAt', 'seq']);
+      sheet.appendRow(['id', 'eventId', 'studentId', 'date', 'type', 'present', 'markedAt', 'deviceId', 'updatedAt', 'seq']);
     } else if (name === 'config') {
       sheet.appendRow(['key', 'value']);
       sheet.appendRow(['token', 'VOTRE_JETON_SECRET_D_AU_MOINS_32_CARACTERES']);

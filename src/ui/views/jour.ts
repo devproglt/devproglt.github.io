@@ -1,14 +1,17 @@
 import { STRINGS } from '../strings';
 import { renderSegmentedToggle, setupSegmentedToggleEvents } from '../components/toggle';
 import { showToast } from '../components/toast';
-import { getAttendancesByDateAndType, toggleAttendance } from '../../db/attendances';
+import { getAttendancesByEvent, getAttendancesByDateAndType, toggleAttendance } from '../../db/attendances';
+import { getEventsByDateAndType, getEventById, type EventRecord } from '../../db/events';
 import { getAllStudents, type StudentRecord } from '../../db/students';
 import { calculateDaySummary } from '../../domain/stats';
 import { formatTimeBrussels, formatReadableDate } from '../../domain/dates';
+import { generateAttendanceSummaryText } from '../../domain/summary';
 
 export interface JourViewOptions {
   date: string;
   type: 'presence' | 'course';
+  eventId?: string;
   onStudentCardClick: (studentId: string) => void;
   onRefreshNeeded: () => void;
 }
@@ -17,6 +20,7 @@ export class JourView {
   private container: HTMLElement;
   private options: JourViewOptions;
   private activeTab: 'presence' | 'course';
+  private currentEvent: EventRecord | null = null;
 
   constructor(container: HTMLElement, options: JourViewOptions) {
     this.container = container;
@@ -29,13 +33,29 @@ export class JourView {
   }
 
   private async loadDataAndRender(): Promise<void> {
-    const attendances = await getAttendancesByDateAndType(this.options.date, this.activeTab);
-    const presentAttendances = attendances.filter((a) => a.present);
+    // Récupérer l'événement concerné
+    if (this.options.eventId) {
+      this.currentEvent = await getEventById(this.options.eventId) || null;
+      if (this.currentEvent) {
+        this.activeTab = this.currentEvent.type;
+      }
+    } else {
+      const events = await getEventsByDateAndType(this.options.date, this.activeTab);
+      this.currentEvent = events[0] || null;
+    }
 
+    let attendances = [];
+    if (this.currentEvent) {
+      attendances = await getAttendancesByEvent(this.currentEvent.id);
+    } else {
+      attendances = await getAttendancesByDateAndType(this.options.date, this.activeTab);
+    }
+
+    const presentAttendances = attendances.filter((a) => a.present);
     const allStudents = await getAllStudents();
     const studentsMap = new Map<string, StudentRecord>(allStudents.map((s) => [s.id, s]));
 
-    const summary = calculateDaySummary(presentAttendances, new Map(allStudents.map(s => [s.id, s])), this.activeTab);
+    const summary = calculateDaySummary(presentAttendances, studentsMap, this.activeTab);
 
     // Liste des présents ordonnée par heure de pointage décroissante
     const presentList = presentAttendances
@@ -46,6 +66,15 @@ export class JourView {
       .filter((item): item is { attendance: typeof item.attendance; student: StudentRecord } => Boolean(item.student))
       .sort((a, b) => b.attendance.markedAt - a.attendance.markedAt);
 
+    // Liste des présents triée par classe croissant, puis par nom pour le résumé copié
+    const sortedForSummary = [...presentList].sort((a, b) => {
+      const yearComp = (a.student.year || '').localeCompare(b.student.year || '', 'fr', { numeric: true });
+      if (yearComp !== 0) return yearComp;
+      const fnComp = (a.student.firstName || '').localeCompare(b.student.firstName || '', 'fr');
+      if (fnComp !== 0) return fnComp;
+      return (a.student.lastName || '').localeCompare(b.student.lastName || '', 'fr');
+    });
+
     const tabsToggleHtml = renderSegmentedToggle(
       [
         { value: 'presence', label: STRINGS.types.presence },
@@ -55,7 +84,7 @@ export class JourView {
     );
 
     const yearRowsHtml = Object.entries(summary.byYear)
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a], [b]) => a.localeCompare(b, 'fr', { numeric: true }))
       .map(
         ([yr, counts]) => `
         <tr>
@@ -69,12 +98,19 @@ export class JourView {
       )
       .join('');
 
+    const eventTitle = this.currentEvent ? this.currentEvent.title : (this.activeTab === 'presence' ? STRINGS.types.presence : STRINGS.types.course);
+
     this.container.innerHTML = `
       <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
-        <div style="display: flex; align-items: center; justify-content: space-between;">
-          <h2>${formatReadableDate(this.options.date)}</h2>
-          <button class="btn btn-secondary" id="jour-copy-summary-btn" style="min-height: 38px; padding: 0 12px;">
-            ${STRINGS.actions.copySummary}
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
+          <div>
+            <h2 style="font-size: var(--font-size-lg); font-weight: 800;">${this.escapeHtml(eventTitle)}</h2>
+            <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 2px;">
+              ${formatReadableDate(this.options.date)}
+            </div>
+          </div>
+          <button class="btn btn-secondary" id="jour-copy-summary-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
+            📋 ${STRINGS.actions.copySummary}
           </button>
         </div>
 
@@ -84,7 +120,7 @@ export class JourView {
         <div style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow-sm);">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: var(--font-size-base); font-weight: 700; color: var(--text-primary);">
-              Résumé — ${this.activeTab === 'presence' ? STRINGS.types.presence : STRINGS.types.course}
+              Résumé de la séance
             </span>
             <span style="font-size: var(--font-size-xl); font-weight: 800; color: var(--accent-active);">
               ${summary.total} élève(s)
@@ -129,7 +165,7 @@ export class JourView {
               ${presentList
                 .map(
                   (item) => `
-                <div class="student-card" data-student-id="${item.student.id}" data-attendance-id="${item.attendance.id}">
+                <div class="student-card" data-student-id="${item.student.id}" data-event-id="${item.attendance.eventId}" data-attendance-id="${item.attendance.id}">
                   <div class="student-info">
                     <div class="student-name">${this.escapeHtml(item.student.firstName)} ${this.escapeHtml(item.student.lastName)}</div>
                     <div class="student-meta">
@@ -155,24 +191,30 @@ export class JourView {
       </div>
     `;
 
-    this.attachEvents(summary);
+    this.attachEvents(summary, eventTitle, sortedForSummary);
   }
 
-  private attachEvents(summary: ReturnType<typeof calculateDaySummary>): void {
+  private attachEvents(
+    summary: ReturnType<typeof calculateDaySummary>,
+    eventTitle: string,
+    sortedPresentList: Array<{ student: StudentRecord; attendance: any }>
+  ): void {
     setupSegmentedToggleEvents(this.container, (val) => {
       this.activeTab = val as 'presence' | 'course';
+      this.options.eventId = undefined;
       this.loadDataAndRender();
     });
 
     const copyBtn = this.container.querySelector('#jour-copy-summary-btn');
     if (copyBtn) {
       copyBtn.addEventListener('click', () => {
-        let text = `Résumé des ${this.activeTab === 'presence' ? 'présences' : 'courses'} — ${formatReadableDate(this.options.date)}\n`;
-        text += `Total: ${summary.total} (Filles: ${summary.girls}, Garçons: ${summary.boys}, Internes: ${summary.internals})\n\n`;
-        text += `Répartition par année:\n`;
-        for (const [yr, counts] of Object.entries(summary.byYear)) {
-          text += `- ${yr}: ${counts.total} (F: ${counts.girls}, G: ${counts.boys}, I: ${counts.internals})\n`;
-        }
+        const text = generateAttendanceSummaryText({
+          title: eventTitle,
+          date: this.options.date,
+          summary,
+          students: sortedPresentList.map((item) => item.student),
+        });
+
         navigator.clipboard.writeText(text);
         showToast(STRINGS.actions.copiedSuccess);
       });
@@ -182,13 +224,14 @@ export class JourView {
     const cards = this.container.querySelectorAll<HTMLElement>('.student-card');
     cards.forEach((card) => {
       const studentId = card.dataset.studentId;
+      const eventId = card.dataset.eventId || (this.currentEvent ? this.currentEvent.id : `${this.options.date}_${this.activeTab}`);
       if (!studentId) return;
 
       const cancelBtn = card.querySelector('.jour-cancel-btn');
       if (cancelBtn) {
         cancelBtn.addEventListener('click', async (e) => {
           e.stopPropagation();
-          await toggleAttendance(studentId, this.options.date, this.activeTab, false);
+          await toggleAttendance(eventId, studentId, this.options.date, this.activeTab, false);
           showToast('Pointage annulé');
           this.loadDataAndRender();
           this.options.onRefreshNeeded();

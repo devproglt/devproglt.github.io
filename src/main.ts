@@ -169,13 +169,16 @@ class App {
     };
 
     // Route Pointage
-    this.router.addRoute('#/pointage', async () => {
+    this.router.addRoute('#/pointage', async (_, params) => {
       this.headerState.showTopo = true;
+      if (params.date) this.headerState.date = params.date;
+      if (params.type && (params.type === 'presence' || params.type === 'course')) this.headerState.type = params.type;
       await this.updateDaySummaryHeader();
       this.renderNavbarUI('#/pointage');
       const pointageView = new PointageView(viewContainer, {
         date: this.headerState.date,
         type: this.headerState.type,
+        eventId: params.eventId || undefined,
         onStudentCardClick: (studentId) => {
           this.router.navigate(`#/fiche?id=${studentId}`);
         },
@@ -189,14 +192,17 @@ class App {
       pointageView.render();
     });
 
-    // Route Jour (Aujourd'hui)
-    this.router.addRoute('#/jour', async () => {
+    // Route Jour (Aujourd'hui / Séance)
+    this.router.addRoute('#/jour', async (_, params) => {
       this.headerState.showTopo = false;
+      if (params.date) this.headerState.date = params.date;
+      if (params.type && (params.type === 'presence' || params.type === 'course')) this.headerState.type = params.type;
       this.renderHeaderUI();
       this.renderNavbarUI('#/jour');
       const jourView = new JourView(viewContainer, {
         date: this.headerState.date,
         type: this.headerState.type,
+        eventId: params.eventId || undefined,
         onStudentCardClick: (studentId) => {
           this.router.navigate(`#/fiche?id=${studentId}`);
         },
@@ -237,11 +243,15 @@ class App {
           }
         },
         onRefreshNeeded: refreshCallback,
-        onInspectSessionClick: async (dateStr, type) => {
+        onInspectSessionClick: async (dateStr, type, eventId) => {
           this.headerState.date = dateStr;
           this.headerState.type = type;
           await this.updateDaySummaryHeader();
-          this.router.navigate('#/jour');
+          if (eventId) {
+            this.router.navigate(`#/jour?eventId=${eventId}&date=${dateStr}&type=${type}`);
+          } else {
+            this.router.navigate(`#/jour?date=${dateStr}&type=${type}`);
+          }
         },
       });
       this.activeViewInstance = ficheView;
@@ -257,13 +267,17 @@ class App {
         onStudentCardClick: (studentId) => {
           this.router.navigate(`#/fiche?id=${studentId}`);
         },
-        onInspectDateClick: async (dateStr, type) => {
+        onInspectDateClick: async (dateStr, type, eventId) => {
           this.headerState.date = dateStr;
           if (type) {
             this.headerState.type = type;
           }
           await this.updateDaySummaryHeader();
-          this.router.navigate('#/jour');
+          if (eventId) {
+            this.router.navigate(`#/jour?eventId=${eventId}&date=${dateStr}&type=${type || 'presence'}`);
+          } else {
+            this.router.navigate(`#/jour?date=${dateStr}&type=${type || 'presence'}`);
+          }
         },
       });
       this.activeViewInstance = historiqueView;

@@ -1,5 +1,6 @@
 import { getMeta, setMeta, getDeviceId } from '../db/meta';
 import { getDirtyStudents, markStudentsSynced, deduplicateStudents } from '../db/students';
+import { getDirtyEvents, markEventsSynced } from '../db/events';
 import { getDirtyAttendances, markAttendancesSynced, normalizeAndRepairAttendances } from '../db/attendances';
 import { formatDateBrussels } from '../domain/dates';
 import { db } from '../db/schema';
@@ -66,8 +67,9 @@ export class SyncEngine {
 
   public async getPendingCount(): Promise<number> {
     const dirtyS = await getDirtyStudents();
+    const dirtyE = await getDirtyEvents();
     const dirtyA = await getDirtyAttendances();
-    return dirtyS.length + dirtyA.length;
+    return dirtyS.length + dirtyE.length + dirtyA.length;
   }
 
   public async notifyListeners(): Promise<void> {
@@ -109,31 +111,35 @@ export class SyncEngine {
 
       // 1. PUSH
       const dirtyStudents = await getDirtyStudents();
+      const dirtyEvents = await getDirtyEvents();
       const dirtyAttendances = await getDirtyAttendances();
 
-      if (dirtyStudents.length > 0 || dirtyAttendances.length > 0) {
-        // Envoi par lots de 500 max
+      if (dirtyStudents.length > 0 || dirtyEvents.length > 0 || dirtyAttendances.length > 0) {
         const batchStudents = dirtyStudents.slice(0, 500);
+        const batchEvents = dirtyEvents.slice(0, 500);
         const batchAttendances = dirtyAttendances.slice(0, 500);
 
-        const pushRes = await pushToServer(syncUrl, syncToken, deviceId, batchStudents, batchAttendances);
+        const pushRes = await pushToServer(syncUrl, syncToken, deviceId, batchStudents, batchEvents, batchAttendances);
 
         if (pushRes.accepted) {
           const acceptedIds = new Set(pushRes.accepted);
           const acceptedStudents = batchStudents.filter((s) => acceptedIds.has(s.id)).map((s) => s.id);
+          const acceptedEvents = batchEvents.filter((e) => acceptedIds.has(e.id)).map((e) => e.id);
           const acceptedAttendances = batchAttendances.filter((a) => acceptedIds.has(a.id)).map((a) => a.id);
 
           await markStudentsSynced(acceptedStudents);
+          await markEventsSynced(acceptedEvents);
           await markAttendancesSynced(acceptedAttendances);
         }
 
         if (pushRes.rejected) {
-          // Les lignes rejetées repassent dirty = 0 et seront écrasées au pull
           const rejectedIds = new Set(pushRes.rejected);
           const rejectedStudents = batchStudents.filter((s) => rejectedIds.has(s.id)).map((s) => s.id);
+          const rejectedEvents = batchEvents.filter((e) => rejectedIds.has(e.id)).map((e) => e.id);
           const rejectedAttendances = batchAttendances.filter((a) => rejectedIds.has(a.id)).map((a) => a.id);
 
           await markStudentsSynced(rejectedStudents);
+          await markEventsSynced(rejectedEvents);
           await markAttendancesSynced(rejectedAttendances);
         }
       }
@@ -142,14 +148,32 @@ export class SyncEngine {
       const cursor = options.forceFull ? 0 : await getMeta<number>('lastPullCursor', 0);
       const pullRes = await pullFromServer(syncUrl, syncToken, cursor);
 
-      if (pullRes.students || pullRes.attendances) {
-        await db.transaction('rw', [db.students, db.attendances, db.meta], async () => {
+      if (pullRes.students || pullRes.events || pullRes.attendances) {
+        await db.transaction('rw', [db.students, db.events, db.attendances, db.meta], async () => {
           if (options.forceFull) {
             if (pullRes.students && pullRes.students.length > 0) {
               await db.students.clear();
             }
+            if (pullRes.events) {
+              await db.events.clear();
+            }
             if (pullRes.attendances) {
               await db.attendances.clear();
+            }
+          }
+
+          // Fusion des événements
+          if (pullRes.events) {
+            totalPulled += pullRes.events.length;
+            for (const incomingE of pullRes.events) {
+              const local = await db.events.get(incomingE.id);
+              if (!local || incomingE.updatedAt >= local.updatedAt || options.forceFull) {
+                await db.events.put({
+                  ...incomingE,
+                  date: formatDateBrussels(incomingE.date),
+                  dirty: 0,
+                });
+              }
             }
           }
 
@@ -185,17 +209,13 @@ export class SyncEngine {
                 const oldId = matchByName.id;
                 const oldAttendances = await db.attendances.where('studentId').equals(oldId).toArray();
                 for (const att of oldAttendances) {
-                  const cleanDate = formatDateBrussels(att.date);
-                  const cleanType = att.type === 'course' ? 'course' : 'presence';
-                  const newAttId = `${incomingS.id}_${cleanDate}_${cleanType}`;
+                  const newAttId = `${att.eventId}_${incomingS.id}`;
                   const existingAtt = await db.attendances.get(newAttId);
                   if (!existingAtt) {
                     await db.attendances.put({
                       ...att,
                       id: newAttId,
                       studentId: incomingS.id,
-                      date: cleanDate,
-                      type: cleanType,
                     });
                   }
                   await db.attendances.delete(att.id);
@@ -229,12 +249,13 @@ export class SyncEngine {
             for (const incomingA of pullRes.attendances) {
               const cleanDate = formatDateBrussels(incomingA.date);
               const cleanType: 'presence' | 'course' = incomingA.type === 'course' ? 'course' : 'presence';
-              const canonicalId = `${incomingA.studentId}_${cleanDate}_${cleanType}`;
+              const canonicalId = incomingA.eventId ? `${incomingA.eventId}_${incomingA.studentId}` : `${incomingA.studentId}_${cleanDate}_${cleanType}`;
               const local = await db.attendances.get(canonicalId);
               if (!local || incomingA.updatedAt >= local.updatedAt || options.forceFull) {
                 await db.attendances.put({
                   ...incomingA,
                   id: canonicalId,
+                  eventId: incomingA.eventId || `${cleanDate}_${cleanType}`,
                   studentId: incomingA.studentId,
                   date: cleanDate,
                   type: cleanType,

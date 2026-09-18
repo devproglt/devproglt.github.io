@@ -2,13 +2,14 @@ import { STRINGS } from '../strings';
 import { showToast } from '../components/toast';
 import { getStudentById, updateStudent, deleteStudentPermanently, type StudentRecord } from '../../db/students';
 import { getAttendancesByStudent } from '../../db/attendances';
+import { getAllEvents, type EventRecord } from '../../db/events';
 import { formatTimeBrussels, formatReadableDate } from '../../domain/dates';
 
 export interface FicheViewOptions {
   studentId: string;
   onBack: () => void;
   onRefreshNeeded: () => void;
-  onInspectSessionClick?: (date: string, type: 'presence' | 'course') => void;
+  onInspectSessionClick?: (date: string, type: 'presence' | 'course', eventId?: string) => void;
 }
 
 export class FicheView {
@@ -41,7 +42,11 @@ export class FicheView {
     }
 
     this.student = student;
-    const allAttendances = await getAttendancesByStudent(student.id);
+    const [allAttendances, allEvents] = await Promise.all([
+      getAttendancesByStudent(student.id),
+      getAllEvents(),
+    ]);
+    const eventsMap = new Map<string, EventRecord>(allEvents.map((e) => [e.id, e]));
     const presentAttendances = allAttendances.filter((a) => a.present);
 
     let presencesCount = 0;
@@ -146,11 +151,16 @@ export class FicheView {
                 const isPresence = att.type === 'presence';
                 const badgeColor = isPresence ? 'var(--accent-presence)' : 'var(--accent-course)';
                 const badgeBg = isPresence ? 'var(--accent-presence-light)' : 'var(--accent-course-light)';
+                const event = att.eventId ? eventsMap.get(att.eventId) : null;
+                const title = event ? event.title : (isPresence ? STRINGS.types.presence : STRINGS.types.course);
+
                 return `
-                  <div class="fiche-session-card" data-date="${att.date}" data-type="${att.type}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+                  <div class="fiche-session-card" data-date="${att.date}" data-type="${att.type}" data-event-id="${att.eventId || ''}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
                     <div>
-                      <div style="font-size: var(--font-size-sm); font-weight: 600; color: var(--text-primary);">${formatReadableDate(att.date)}</div>
-                      <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 2px;">Heure : ${formatTimeBrussels(att.markedAt)}</div>
+                      <div style="font-size: var(--font-size-sm); font-weight: 700; color: var(--text-primary);">${this.escapeHtml(title)}</div>
+                      <div style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: 2px;">
+                        ${formatReadableDate(att.date)} • ${formatTimeBrussels(att.markedAt)}
+                      </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
                       <span style="background: ${badgeBg}; color: ${badgeColor}; padding: 4px 10px; border-radius: var(--radius-full); font-size: var(--font-size-xs); font-weight: 700;">
@@ -212,8 +222,9 @@ export class FicheView {
       card.addEventListener('click', () => {
         const dateStr = card.dataset.date;
         const type = (card.dataset.type || 'presence') as 'presence' | 'course';
+        const eventId = card.dataset.eventId || undefined;
         if (dateStr && this.options.onInspectSessionClick) {
-          this.options.onInspectSessionClick(dateStr, type);
+          this.options.onInspectSessionClick(dateStr, type, eventId);
         }
       });
     });

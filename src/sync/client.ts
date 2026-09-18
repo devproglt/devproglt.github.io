@@ -1,10 +1,11 @@
-import type { StudentRecord, AttendanceRecord } from '../db/schema';
+import type { StudentRecord, AttendanceRecord, EventRecord } from '../db/schema';
 
 export interface PushRequestPayload {
   action: 'push';
   token: string;
   deviceId: string;
   students: StudentRecord[];
+  events: EventRecord[];
   attendances: AttendanceRecord[];
 }
 
@@ -24,6 +25,7 @@ export interface PullRequestPayload {
 export interface PullResponsePayload {
   ok: boolean;
   students?: StudentRecord[];
+  events?: EventRecord[];
   attendances?: AttendanceRecord[];
   cursor?: number;
   error?: string;
@@ -37,6 +39,7 @@ export async function pushToServer(
   token: string,
   deviceId: string,
   dirtyStudents: StudentRecord[],
+  dirtyEvents: EventRecord[],
   dirtyAttendances: AttendanceRecord[]
 ): Promise<PushResponsePayload> {
   const payload: PushRequestPayload = {
@@ -44,6 +47,7 @@ export async function pushToServer(
     token,
     deviceId,
     students: dirtyStudents,
+    events: dirtyEvents,
     attendances: dirtyAttendances,
   };
 
