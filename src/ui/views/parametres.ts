@@ -140,8 +140,11 @@ export class ParametresView {
         <!-- Mise à jour de l'application -->
         <section style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 12px;">
           <h3 style="font-size: var(--font-size-base); font-weight: 700;">Version de l'application</h3>
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: var(--font-size-xs); color: var(--text-secondary);">PWA Standalone (Hors ligne)</span>
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <div style="font-size: var(--font-size-base); font-weight: 800; color: var(--accent-active);">Version B0.4</div>
+              <div style="font-size: var(--font-size-xs); color: var(--text-secondary); margin-top: 2px;">PWA Standalone (Hors ligne)</div>
+            </div>
             <button class="btn btn-secondary" id="param-update-app-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
               ${STRINGS.actions.updateApp}
             </button>

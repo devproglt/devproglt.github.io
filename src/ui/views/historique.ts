@@ -5,7 +5,7 @@ import { getAllStudents, type StudentRecord } from '../../db/students';
 import { getAllAttendances, type AttendanceRecord } from '../../db/attendances';
 import { getAllEvents, type EventRecord } from '../../db/events';
 import { getYearsList } from '../../db/meta';
-import { calculateAllStudentStats, type StudentStats } from '../../domain/stats';
+import { calculateAllStudentStats, extractYearLevel, type StudentStats } from '../../domain/stats';
 import { formatReadableDate } from '../../domain/dates';
 import { exportCurrentViewToExcel } from '../../io/export';
 
@@ -50,7 +50,19 @@ export class HistoriqueView {
       getAllEvents(),
     ]);
 
-    this.yearsList = years;
+    const distinctYearsSet = new Set<string>();
+    for (const yr of years) {
+      const level = extractYearLevel(yr);
+      if (level) distinctYearsSet.add(level);
+    }
+    for (const s of students) {
+      const level = extractYearLevel(s.year);
+      if (level) distinctYearsSet.add(level);
+    }
+    this.yearsList = Array.from(distinctYearsSet).sort((a, b) =>
+      a.localeCompare(b, 'fr', { numeric: true })
+    );
+
     this.students = students;
     this.attendances = attendances;
     this.events = events;
@@ -64,7 +76,7 @@ export class HistoriqueView {
       filteredStudents = filteredStudents.filter((s) => s.active);
     }
     if (this.yearFilter !== 'all') {
-      filteredStudents = filteredStudents.filter((s) => s.year === this.yearFilter);
+      filteredStudents = filteredStudents.filter((s) => extractYearLevel(s.year) === this.yearFilter);
     }
 
     const statsMap = calculateAllStudentStats(filteredAttendances);
@@ -125,7 +137,7 @@ export class HistoriqueView {
       let comp = 0;
       if (this.sortField === 'lastName') comp = a.student.lastName.localeCompare(b.student.lastName, 'fr');
       else if (this.sortField === 'firstName') comp = a.student.firstName.localeCompare(b.student.firstName, 'fr');
-      else if (this.sortField === 'year') comp = a.student.year.localeCompare(b.student.year, 'fr');
+      else if (this.sortField === 'year') comp = extractYearLevel(a.student.year).localeCompare(extractYearLevel(b.student.year), 'fr', { numeric: true });
       else if (this.sortField === 'presences') comp = a.stat.presences - b.stat.presences;
       else if (this.sortField === 'courses') comp = a.stat.courses - b.stat.courses;
       else if (this.sortField === 'total') comp = a.stat.total - b.stat.total;
@@ -158,7 +170,7 @@ export class HistoriqueView {
               <tr class="historique-student-row" data-student-id="${item.student.id}" style="cursor: pointer;">
                 <td><strong>${this.escapeHtml(item.student.lastName)}</strong></td>
                 <td>${this.escapeHtml(item.student.firstName)}</td>
-                <td><span class="badge-year">${this.escapeHtml(item.student.year)}</span></td>
+                <td><span class="badge-year">${this.escapeHtml(extractYearLevel(item.student.year))}</span></td>
                 <td><strong style="color: var(--accent-presence);">${item.stat.presences}</strong></td>
                 <td><strong style="color: var(--accent-course);">${item.stat.courses}</strong></td>
                 <td><strong>${item.stat.total}</strong></td>

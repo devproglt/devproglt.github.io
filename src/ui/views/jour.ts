@@ -5,7 +5,7 @@ import { db } from '../../db/schema';
 import { getAttendancesByEvent, getAttendancesByDateAndType, toggleAttendance } from '../../db/attendances';
 import { getEventsByDateAndType, getEventById, deleteEvent, type EventRecord } from '../../db/events';
 import { getAllStudents, type StudentRecord } from '../../db/students';
-import { calculateDaySummary } from '../../domain/stats';
+import { calculateDaySummary, extractYearLevel } from '../../domain/stats';
 import { formatTimeBrussels, formatReadableDate } from '../../domain/dates';
 import { generateAttendanceSummaryText } from '../../domain/summary';
 
@@ -69,9 +69,11 @@ export class JourView {
       .filter((item): item is { attendance: typeof item.attendance; student: StudentRecord } => Boolean(item.student))
       .sort((a, b) => b.attendance.markedAt - a.attendance.markedAt);
 
-    // Liste des présents triée par classe croissant, puis par nom pour le résumé copié
+    // Liste des présents triée par année d'étude croissante, puis par prénom et nom pour le résumé copié
     const sortedForSummary = [...presentList].sort((a, b) => {
-      const yearComp = (a.student.year || '').localeCompare(b.student.year || '', 'fr', { numeric: true });
+      const aYr = extractYearLevel(a.student.year || '');
+      const bYr = extractYearLevel(b.student.year || '');
+      const yearComp = aYr.localeCompare(bYr, 'fr', { numeric: true });
       if (yearComp !== 0) return yearComp;
       const fnComp = (a.student.firstName || '').localeCompare(b.student.firstName || '', 'fr');
       if (fnComp !== 0) return fnComp;
@@ -185,7 +187,7 @@ export class JourView {
                   <div class="student-info">
                     <div class="student-name">${this.escapeHtml(item.student.firstName)} ${this.escapeHtml(item.student.lastName)}</div>
                     <div class="student-meta">
-                      <span class="badge-year">${this.escapeHtml(item.student.year)}</span>
+                      <span class="badge-year">${this.escapeHtml(extractYearLevel(item.student.year))}</span>
                       <span class="badge-gender ${item.student.gender}">${item.student.gender === 'F' ? 'Fille' : 'Garçon'}</span>
                     </div>
                   </div>

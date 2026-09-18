@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateDaySummary, calculateAllStudentStats, type AttendanceRecord, type StudentInfo } from '../../src/domain/stats';
+import { calculateDaySummary, calculateAllStudentStats, extractYearLevel, type AttendanceRecord, type StudentInfo } from '../../src/domain/stats';
 
 describe('Domain: stats', () => {
   const mockStudents = new Map<string, StudentInfo>([
@@ -15,12 +15,20 @@ describe('Domain: stats', () => {
     { id: 'a4', studentId: 's1', date: '2026-09-17', type: 'course', present: false, markedAt: 1015, deviceId: 'dev1', updatedAt: 1015, dirty: 0 }, // Annulé
   ];
 
-  it('calcule correctement le résumé du jour pour les présences', () => {
+  it('extrait correctement le niveau d\'année', () => {
+    expect(extractYearLevel('1A')).toBe('1');
+    expect(extractYearLevel('2B')).toBe('2');
+    expect(extractYearLevel('6')).toBe('6');
+    expect(extractYearLevel('10C')).toBe('10');
+    expect(extractYearLevel('')).toBe('');
+  });
+
+  it('calcule correctement le résumé du jour pour les présences avec regroupement par année', () => {
     const summary = calculateDaySummary(mockAttendances, mockStudents, 'presence');
     expect(summary.total).toBe(2);
     expect(summary.girls).toBe(1);
     expect(summary.boys).toBe(1);
-    expect(summary.byYear['1A'].total).toBe(2);
+    expect(summary.byYear['1'].total).toBe(2);
   });
 
   it('calcule correctement le résumé du jour pour les présences avec internes', () => {
@@ -33,7 +41,7 @@ describe('Domain: stats', () => {
     expect(summary.girls).toBe(1);
     expect(summary.boys).toBe(1);
     expect(summary.internals).toBe(1);
-    expect(summary.byYear['1A'].internals).toBe(1);
+    expect(summary.byYear['1'].internals).toBe(1);
   });
 
   it('calcule correctement la synthèse par élève', () => {

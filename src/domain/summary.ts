@@ -1,5 +1,5 @@
 import { formatReadableDate } from './dates';
-import type { DaySummary } from './stats';
+import { extractYearLevel, type DaySummary } from './stats';
 
 export interface AttendanceSummaryStudent {
   firstName: string;
@@ -17,7 +17,7 @@ export interface SummaryOptions {
 
 /**
  * Génère le texte récapitulatif formaté de la séance pour le presse-papier.
- * Tri des présences : par classe croissant (naturel numérique ex: 1A, 1B, 2A, 10A),
+ * Tri des présences : par année croissante (1, 2, 3, 4, 5, 6),
  * puis par prénom, puis par nom.
  */
 export function generateAttendanceSummaryText(options: SummaryOptions): string {
@@ -41,7 +41,9 @@ export function generateAttendanceSummaryText(options: SummaryOptions): string {
 
   if (students.length > 0) {
     const sortedStudents = [...students].sort((a, b) => {
-      const yearComp = (a.year || '').localeCompare(b.year || '', 'fr', { numeric: true });
+      const aYr = extractYearLevel(a.year || '');
+      const bYr = extractYearLevel(b.year || '');
+      const yearComp = aYr.localeCompare(bYr, 'fr', { numeric: true });
       if (yearComp !== 0) return yearComp;
       const fnComp = (a.firstName || '').localeCompare(b.firstName || '', 'fr');
       if (fnComp !== 0) return fnComp;
@@ -50,7 +52,8 @@ export function generateAttendanceSummaryText(options: SummaryOptions): string {
 
     text += `\nListe des présences (${sortedStudents.length}) :\n`;
     for (const student of sortedStudents) {
-      text += `- ${student.firstName} ${student.lastName} (${student.year})\n`;
+      const yr = extractYearLevel(student.year || '');
+      text += `- ${student.firstName} ${student.lastName}${yr ? ` (${yr})` : ''}\n`;
     }
   }
 

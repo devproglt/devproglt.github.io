@@ -35,8 +35,22 @@ export interface AttendanceRecord {
 }
 
 /**
+ * Extrait le niveau d'année d'une chaîne de classe/année (ex: "1A" -> "1", "2B" -> "2", "3" -> "3", "6e" -> "6").
+ */
+export function extractYearLevel(yearOrClass: string): string {
+  if (!yearOrClass) return '';
+  const trimmed = yearOrClass.trim();
+  const match = trimmed.match(/^(\d+)/);
+  if (match) {
+    return match[1];
+  }
+  return trimmed;
+}
+
+/**
  * Calcule le résumé du jour pour un type de présence donné et une liste d'élèves.
  * Garantit qu'un élève n'est compté qu'une seule fois par séance.
+ * Regroupe les statistiques par année d'étude (1, 2, 3, 4, 5, 6...).
  */
 export function calculateDaySummary(
   attendances: AttendanceRecord[],
@@ -70,7 +84,8 @@ export function calculateDaySummary(
       internals++;
     }
 
-    const yr = student.year || 'Non spécifiée';
+    const rawYr = student.year || 'Non spécifiée';
+    const yr = extractYearLevel(rawYr) || rawYr;
     if (!byYear[yr]) {
       byYear[yr] = { girls: 0, boys: 0, internals: 0, total: 0 };
     }
