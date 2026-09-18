@@ -130,8 +130,8 @@ export class ElevesView {
           <div class="student-meta">
             <span class="badge-year">${this.escapeHtml(student.year)}</span>
             <span class="badge-gender ${student.gender}">${student.gender === 'F' ? 'Fille' : 'Garçon'}</span>
-            ${student.isInternal ? `<span style="background: var(--bg-surface-hover); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.7rem; font-weight: 600;">🏠 Interne</span>` : ''}
-            ${student.notes ? `<span style="color: var(--text-muted); font-size: 0.75rem;">📝 ${this.escapeHtml(student.notes)}</span>` : ''}
+            ${student.isInternal ? `<span style="background: var(--bg-surface-hover); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.7rem; font-weight: 600;">Interne</span>` : ''}
+            ${student.notes ? `<span style="color: var(--text-muted); font-size: 0.75rem;">${this.escapeHtml(student.notes)}</span>` : ''}
           </div>
         </div>
         <button class="btn btn-secondary eleves-edit-btn" data-student-id="${student.id}" style="min-height: 38px; padding: 0 10px; font-size: 0.8rem;">
@@ -379,7 +379,7 @@ export class ElevesView {
             <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
               ${isEdit ? `
                 <button type="button" class="btn btn-danger" id="form-delete-student-btn" style="flex: 1; min-height: 42px;">
-                  🗑️ Supprimer
+                  Supprimer
                 </button>
               ` : ''}
               <button type="button" class="btn btn-secondary" id="form-cancel-btn" style="flex: 1; min-height: 42px;">

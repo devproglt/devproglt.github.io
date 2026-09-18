@@ -187,6 +187,16 @@ class App {
           this.headerState.type = type;
           await this.updateDaySummaryHeader();
         },
+        onCreationModeChange: (isCreating) => {
+          this.headerState.showTopo = !isCreating;
+          this.renderHeaderUI();
+        },
+        onEventChange: async (_eventId, date, type) => {
+          this.headerState.date = date;
+          this.headerState.type = type;
+          this.headerState.showTopo = true;
+          await this.updateDaySummaryHeader();
+        },
       });
       this.activeViewInstance = pointageView;
       pointageView.render();
@@ -207,6 +217,9 @@ class App {
           this.router.navigate(`#/fiche?id=${studentId}`);
         },
         onRefreshNeeded: refreshCallback,
+        onDeleteSession: () => {
+          this.router.navigate('#/historique');
+        },
       });
       this.activeViewInstance = jourView;
       jourView.render();

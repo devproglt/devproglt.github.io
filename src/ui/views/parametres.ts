@@ -82,11 +82,11 @@ export class ParametresView {
           </div>
 
           <button class="btn btn-secondary" id="param-force-sync-btn" style="width: 100%; border-color: var(--accent-presence); color: var(--accent-presence); margin-top: 4px;">
-            🔄 Forcer le rechargement complet (Télécharger tout le Sheet)
+            Forcer le rechargement complet (Télécharger tout le Sheet)
           </button>
 
           <button class="btn btn-secondary" id="param-clean-duplicates-btn" style="width: 100%; margin-top: 4px;">
-            🧹 Nettoyer et fusionner les doublons (Élèves & Présences)
+            Nettoyer et fusionner les doublons (Élèves & Présences)
           </button>
         </section>
 
@@ -101,7 +101,7 @@ export class ParametresView {
             </label>
 
             <button class="btn btn-secondary" id="param-download-template-btn">
-              📄 ${STRINGS.actions.downloadTemplate}
+              ${STRINGS.actions.downloadTemplate}
             </button>
           </div>
         </section>
@@ -112,10 +112,10 @@ export class ParametresView {
 
           <div style="display: flex; gap: 10px;">
             <button class="btn btn-secondary" id="param-backup-json-btn" style="flex: 1;">
-              📥 ${STRINGS.actions.backupJson}
+              ${STRINGS.actions.backupJson}
             </button>
             <label class="btn btn-secondary" style="flex: 1; cursor: pointer;">
-              📤 ${STRINGS.actions.restoreJson}
+              ${STRINGS.actions.restoreJson}
               <input type="file" id="param-restore-file" accept=".json" style="display: none;" />
             </label>
           </div>
@@ -127,7 +127,7 @@ export class ParametresView {
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: var(--font-size-xs); color: var(--text-secondary);">PWA Standalone (Hors ligne)</span>
             <button class="btn btn-secondary" id="param-update-app-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
-              🔄 ${STRINGS.actions.updateApp}
+              ${STRINGS.actions.updateApp}
             </button>
           </div>
         </section>
@@ -135,7 +135,7 @@ export class ParametresView {
         <!-- Zone de Danger : Remise à zéro et nouvelle année scolaire -->
         <section style="background: var(--bg-surface); border: 1px solid var(--color-danger); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 12px;">
           <h3 style="font-size: var(--font-size-base); font-weight: 700; color: var(--color-danger);">
-            ⚠️ Zone de Danger (Nouvelle année scolaire / Nettoyage)
+            Zone de Danger (Nouvelle année scolaire / Nettoyage)
           </h3>
           <p style="font-size: var(--font-size-xs); color: var(--text-secondary);">
             Ces actions effacent définitivement les données locales de votre appareil :
@@ -143,10 +143,10 @@ export class ParametresView {
 
           <div style="display: flex; flex-direction: column; gap: 10px;">
             <button class="btn btn-secondary" id="param-clear-attendances-btn" style="border-color: var(--color-warning); color: var(--color-warning);">
-              🗑️ Effacer tous les pointages (Garder les élèves)
+              Effacer tous les pointages (Garder les élèves)
             </button>
             <button class="btn btn-danger" id="param-clear-all-btn">
-              💥 Réinitialiser TOUTE la base de données (Élèves & Présences)
+              Réinitialiser TOUTE la base de données (Élèves & Présences)
             </button>
           </div>
         </section>

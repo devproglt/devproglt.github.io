@@ -17,7 +17,8 @@ export interface PointageViewOptions {
   onStudentCardClick: (studentId: string) => void;
   onRefreshNeeded: () => void;
   onTypeChange?: (type: 'presence' | 'course') => void;
-  onEventChange?: (eventId: string) => void;
+  onEventChange?: (eventId: string, date: string, type: 'presence' | 'course') => void;
+  onCreationModeChange?: (isCreating: boolean) => void;
 }
 
 export class PointageView {
@@ -77,8 +78,15 @@ export class PointageView {
 
     // Si aucun événement n'existe ou si l'utilisateur a cliqué sur "Nouvelle séance"
     if (!this.activeEvent || this.isCreatingNewEvent) {
+      if (this.options.onCreationModeChange) {
+        this.options.onCreationModeChange(true);
+      }
       this.renderEventCreationForm();
       return;
+    }
+
+    if (this.options.onCreationModeChange) {
+      this.options.onCreationModeChange(false);
     }
 
     // Récupérer les pointages de la séance active
@@ -117,7 +125,9 @@ export class PointageView {
         <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 12px 14px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
             <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 1.1rem;">${isPresence ? '🏃' : '🏆'}</span>
+              <span style="padding: 2px 8px; border-radius: var(--radius-sm); font-size: var(--font-size-xs); font-weight: 700; background: var(--accent-${isPresence ? 'presence' : 'course'}-light); color: var(--accent-${isPresence ? 'presence' : 'course'});">
+                ${isPresence ? STRINGS.types.presence : STRINGS.types.course}
+              </span>
               <div>
                 <strong style="font-size: var(--font-size-base); color: var(--text-primary);">
                   ${this.escapeHtml(this.activeEvent.title)}
@@ -131,11 +141,11 @@ export class PointageView {
             <div style="display: flex; gap: 6px;">
               ${this.dayEvents.length > 1 ? `
                 <select id="pointage-event-select" class="search-input" style="width: auto; min-height: 34px; padding: 0 8px; font-size: 0.75rem;">
-                  ${this.dayEvents.map((ev) => `<option value="${ev.id}" ${ev.id === this.activeEvent?.id ? 'selected' : ''}>${ev.type === 'presence' ? '🏃' : '🏆'} ${this.escapeHtml(ev.title)}</option>`).join('')}
+                  ${this.dayEvents.map((ev) => `<option value="${ev.id}" ${ev.id === this.activeEvent?.id ? 'selected' : ''}>${this.escapeHtml(ev.title)} (${ev.type === 'presence' ? 'Entraînement' : 'Course'})</option>`).join('')}
                 </select>
               ` : ''}
               <button class="btn btn-secondary" id="pointage-add-event-btn" style="min-height: 34px; padding: 0 10px; font-size: 0.75rem;">
-                ➕ Séance
+                + Nouvelle séance
               </button>
             </div>
           </div>
@@ -164,7 +174,6 @@ export class PointageView {
   }
 
   private renderEventCreationForm(): void {
-    const isPresence = this.options.type === 'presence';
     const hasExistingEvents = this.dayEvents.length > 0;
 
     const typeToggleHtml = renderSegmentedToggle(
@@ -177,16 +186,30 @@ export class PointageView {
 
     this.container.innerHTML = `
       <div style="padding: 20px 16px; display: flex; flex-direction: column; gap: 16px;">
-        <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 16px;">
+        <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 20px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 14px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h3 style="font-size: var(--font-size-base); font-weight: 700;">
-              ✨ Nouvelle séance pour le ${formatReadableDate(this.options.date)}
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700;">
+              Nouvelle entrée
             </h3>
             ${hasExistingEvents ? `
               <button class="btn btn-secondary" id="pointage-cancel-create-btn" style="min-height: 32px; padding: 0 10px; font-size: 0.75rem;">
                 Annuler
               </button>
             ` : ''}
+          </div>
+
+          <div>
+            <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 6px;">
+              Titre de l'entrée
+            </label>
+            <input type="text" id="pointage-create-title" class="search-input" value="Nouvelle entrée" placeholder="ex: Entraînement standard, Demi-fond, Cross..." />
+          </div>
+
+          <div>
+            <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 6px;">
+              Date de l'entrée
+            </label>
+            <input type="date" id="pointage-create-date" class="search-input" value="${this.options.date}" style="min-height: 38px; padding: 4px 8px; font-size: 0.85rem;" />
           </div>
 
           <div>
@@ -198,20 +221,13 @@ export class PointageView {
 
           <div>
             <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 6px;">
-              Titre / Nom de la séance
-            </label>
-            <input type="text" id="pointage-create-title" class="search-input" placeholder="${isPresence ? 'ex: Entraînement standard, Demi-fond, Piste...' : 'ex: Cross de rentrée, Compétition provinciale...'}" />
-          </div>
-
-          <div>
-            <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 6px;">
               Notes / Remarques (Optionnel)
             </label>
-            <input type="text" id="pointage-create-desc" class="search-input" placeholder="ex: Séance en extérieur, météo pluvieuse..." />
+            <input type="text" id="pointage-create-desc" class="search-input" placeholder="ex: Séance en extérieur, météo..." />
           </div>
 
           <button class="btn btn-primary" id="pointage-start-session-btn" style="width: 100%; min-height: 44px; margin-top: 6px; font-size: 0.95rem; font-weight: 700;">
-            🚀 Démarrer le pointage de cette séance
+            Démarrer le pointage
           </button>
         </div>
       </div>
@@ -220,12 +236,6 @@ export class PointageView {
     setupSegmentedToggleEvents(this.container, (val) => {
       const newType = val as 'presence' | 'course';
       this.options.type = newType;
-      const titleInput = this.container.querySelector<HTMLInputElement>('#pointage-create-title');
-      if (titleInput && !titleInput.value) {
-        titleInput.placeholder = newType === 'presence'
-          ? 'ex: Entraînement standard, Demi-fond, Piste...'
-          : 'ex: Cross de rentrée, Compétition provinciale...';
-      }
       applyAccentTheme(newType);
     });
 
@@ -241,22 +251,28 @@ export class PointageView {
     if (startBtn) {
       startBtn.addEventListener('click', async () => {
         const titleInput = this.container.querySelector<HTMLInputElement>('#pointage-create-title');
+        const dateInput = this.container.querySelector<HTMLInputElement>('#pointage-create-date');
         const descInput = this.container.querySelector<HTMLInputElement>('#pointage-create-desc');
-        const customTitle = titleInput ? titleInput.value.trim() : '';
-        const customDesc = descInput ? descInput.value.trim() : '';
+
+        const customTitle = titleInput?.value.trim() || 'Nouvelle entrée';
+        const selectedDate = dateInput?.value.trim() || this.options.date;
+        const customDesc = descInput?.value.trim() || '';
 
         const newEvent = await createEvent({
-          date: this.options.date,
+          date: selectedDate,
           type: this.options.type,
           title: customTitle,
           description: customDesc,
         });
 
         showToast(`Séance « ${newEvent.title} » créée !`);
+        this.options.date = selectedDate;
+        this.options.eventId = newEvent.id;
         this.activeEvent = newEvent;
         this.isCreatingNewEvent = false;
+
         if (this.options.onEventChange) {
-          this.options.onEventChange(newEvent.id);
+          this.options.onEventChange(newEvent.id, newEvent.date, newEvent.type);
         }
         await this.loadDataAndRender();
         this.options.onRefreshNeeded();
@@ -289,7 +305,7 @@ export class PointageView {
               <div class="student-meta">
                 <span class="badge-year">${this.escapeHtml(student.year)}</span>
                 <span class="badge-gender ${student.gender}">${student.gender === 'F' ? 'Fille' : 'Garçon'}</span>
-                ${student.isInternal ? `<span style="background: var(--bg-surface-hover); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.7rem; font-weight: 600;">🏠 Interne</span>` : ''}
+                ${student.isInternal ? `<span style="background: var(--bg-surface-hover); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.7rem; font-weight: 600;">Interne</span>` : ''}
               </div>
             </div>
             <div class="check-indicator">
@@ -410,7 +426,7 @@ export class PointageView {
           this.options.eventId = this.activeEvent.id;
           this.options.type = this.activeEvent.type;
           if (this.options.onEventChange) {
-            this.options.onEventChange(this.activeEvent.id);
+            this.options.onEventChange(this.activeEvent.id, this.activeEvent.date, this.activeEvent.type);
           }
           await this.loadDataAndRender();
           this.options.onRefreshNeeded();

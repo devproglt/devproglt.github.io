@@ -79,7 +79,7 @@ export class FicheView {
               ${student.active ? 'Désactiver' : 'Réactiver'}
             </button>
             <button class="btn btn-danger" id="fiche-delete-btn" style="min-height: 38px; padding: 0 10px; font-size: 0.8rem;">
-              🗑️ Supprimer
+              Supprimer
             </button>
           </div>
         </div>
@@ -94,14 +94,14 @@ export class FicheView {
               <div style="display: flex; gap: 8px; margin-top: 6px; align-items: center; flex-wrap: wrap;">
                 <span class="badge-year">${this.escapeHtml(student.year)}</span>
                 <span class="badge-gender ${student.gender}">${student.gender === 'F' ? 'Fille' : 'Garçon'}</span>
-                ${student.isInternal ? `<span style="background: var(--bg-surface-hover); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: 600;">🏠 Interne</span>` : ''}
+                ${student.isInternal ? `<span style="background: var(--bg-surface-hover); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.75rem; font-weight: 600;">Interne</span>` : ''}
                 <span style="font-size: var(--font-size-xs); font-weight: 600; color: ${student.active ? 'var(--color-success)' : 'var(--color-danger)'}">
                   ${student.active ? '• Actif' : '• Inactif'}
                 </span>
               </div>
               ${student.notes ? `
                 <div style="margin-top: 10px; font-size: var(--font-size-sm); color: var(--text-secondary); background: var(--bg-surface-hover); padding: 8px 12px; border-radius: var(--radius-sm);">
-                  📝 ${this.escapeHtml(student.notes)}
+                  Note : ${this.escapeHtml(student.notes)}
                 </div>
               ` : ''}
             </div>

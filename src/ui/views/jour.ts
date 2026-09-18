@@ -1,8 +1,9 @@
 import { STRINGS } from '../strings';
 import { renderSegmentedToggle, setupSegmentedToggleEvents } from '../components/toggle';
 import { showToast } from '../components/toast';
+import { db } from '../../db/schema';
 import { getAttendancesByEvent, getAttendancesByDateAndType, toggleAttendance } from '../../db/attendances';
-import { getEventsByDateAndType, getEventById, type EventRecord } from '../../db/events';
+import { getEventsByDateAndType, getEventById, deleteEvent, type EventRecord } from '../../db/events';
 import { getAllStudents, type StudentRecord } from '../../db/students';
 import { calculateDaySummary } from '../../domain/stats';
 import { formatTimeBrussels, formatReadableDate } from '../../domain/dates';
@@ -14,6 +15,7 @@ export interface JourViewOptions {
   eventId?: string;
   onStudentCardClick: (studentId: string) => void;
   onRefreshNeeded: () => void;
+  onDeleteSession?: () => void;
 }
 
 export class JourView {
@@ -109,9 +111,14 @@ export class JourView {
               ${formatReadableDate(this.options.date)}
             </div>
           </div>
-          <button class="btn btn-secondary" id="jour-copy-summary-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
-            📋 ${STRINGS.actions.copySummary}
-          </button>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" id="jour-copy-summary-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
+              ${STRINGS.actions.copySummary}
+            </button>
+            <button class="btn btn-danger" id="jour-delete-session-btn" style="min-height: 38px; padding: 0 10px; font-size: 0.8rem;">
+              Supprimer l'entrée
+            </button>
+          </div>
         </div>
 
         <div>${tabsToggleHtml}</div>
@@ -217,6 +224,32 @@ export class JourView {
 
         navigator.clipboard.writeText(text);
         showToast(STRINGS.actions.copiedSuccess);
+      });
+    }
+
+    const deleteBtn = this.container.querySelector('#jour-delete-session-btn');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', async () => {
+        const attendeeCount = sortedPresentList.length;
+        let confirmMsg = `Êtes-vous sûr de vouloir supprimer cette entrée du ${formatReadableDate(this.options.date)} ?`;
+        if (attendeeCount > 0) {
+          confirmMsg = `Attention : cette séance contient ${attendeeCount} élève(s) pointé(s).\n\nÊtes-vous sûr de vouloir supprimer définitivement cette entrée ainsi que tous ses pointages associés ?`;
+        }
+        if (confirm(confirmMsg)) {
+          if (this.currentEvent) {
+            await deleteEvent(this.currentEvent.id);
+          } else {
+            const atts = await getAttendancesByDateAndType(this.options.date, this.activeTab);
+            for (const a of atts) {
+              await db.attendances.delete(a.id);
+            }
+          }
+          showToast('Entrée supprimée avec succès.');
+          this.options.onRefreshNeeded();
+          if (this.options.onDeleteSession) {
+            this.options.onDeleteSession();
+          }
+        }
       });
     }
 

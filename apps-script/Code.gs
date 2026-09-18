@@ -516,7 +516,7 @@ function jsonResponse(obj) {
 function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('Présences')
-    .addItem('🧹 Nettoyer et dédoublonner les feuilles', 'nettoyerDoublonsSheet')
+    .addItem('Nettoyer et dédoublonner les feuilles', 'nettoyerDoublonsSheet')
     .addToUi();
 }
 
