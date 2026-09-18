@@ -19,6 +19,7 @@ export interface PointageViewOptions {
   onTypeChange?: (type: 'presence' | 'course') => void;
   onEventChange?: (eventId: string, date: string, type: 'presence' | 'course') => void;
   onCreationModeChange?: (isCreating: boolean) => void;
+  onValidateSession?: (eventId: string, date: string, type: 'presence' | 'course') => void;
 }
 
 export class PointageView {
@@ -61,7 +62,7 @@ export class PointageView {
     if (this.options.eventId) {
       this.activeEvent = this.dayEvents.find((e) => e.id === this.options.eventId) || null;
     }
-    if (!this.activeEvent && this.dayEvents.length > 0) {
+    if (!this.activeEvent && this.dayEvents.length > 0 && !this.isCreatingNewEvent) {
       const matchType = this.dayEvents.find((e) => e.type === this.options.type);
       this.activeEvent = matchType || this.dayEvents[0];
     }
@@ -76,7 +77,7 @@ export class PointageView {
       applyAccentTheme(this.options.type);
     }
 
-    // Si aucun événement n'existe ou si l'utilisateur a cliqué sur "Nouvelle séance"
+    // Si aucun événement n'existe ou si l'utilisateur a cliqué sur "+ Nouvelle entrée"
     if (!this.activeEvent || this.isCreatingNewEvent) {
       if (this.options.onCreationModeChange) {
         this.options.onCreationModeChange(true);
@@ -171,10 +172,13 @@ export class PointageView {
           ${this.renderStudentListHtml()}
         </div>
       </div>
+
+      <div id="pointage-modal-container"></div>
     `;
 
     this.attachEvents();
   }
+
 
   private renderEventCreationForm(): void {
     const hasExistingEvents = this.dayEvents.length > 0;
@@ -200,6 +204,21 @@ export class PointageView {
               </button>
             ` : ''}
           </div>
+
+          ${hasExistingEvents ? `
+            <div style="background: var(--bg-surface-hover); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 12px; display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-size: var(--font-size-xs); font-weight: 700; color: var(--text-secondary);">
+                Séance(s) existante(s) pour le ${formatReadableDate(this.options.date)} :
+              </span>
+              <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                ${this.dayEvents.map((ev) => `
+                  <button type="button" class="btn btn-secondary pointage-resume-ev-btn" data-event-id="${ev.id}" style="font-size: 0.8rem; padding: 6px 12px;">
+                    Reprendre « ${this.escapeHtml(ev.title)} » (${ev.type === 'presence' ? 'Entraînement' : 'Course'})
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+          ` : ''}
 
           <div>
             <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 6px;">
@@ -249,12 +268,33 @@ export class PointageView {
           </button>
         </div>
       </div>
+
+      <div id="pointage-modal-container"></div>
     `;
 
     setupSegmentedToggleEvents(this.container, (val) => {
       const newType = val as 'presence' | 'course';
       this.options.type = newType;
       applyAccentTheme(newType);
+    });
+
+    const resumeBtns = this.container.querySelectorAll<HTMLButtonElement>('.pointage-resume-ev-btn');
+    resumeBtns.forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const evId = btn.dataset.eventId;
+        const found = this.dayEvents.find((e) => e.id === evId);
+        if (found) {
+          this.activeEvent = found;
+          this.options.eventId = found.id;
+          this.options.type = found.type;
+          this.isCreatingNewEvent = false;
+          if (this.options.onEventChange) {
+            this.options.onEventChange(found.id, found.date, found.type);
+          }
+          await this.loadDataAndRender();
+          this.options.onRefreshNeeded();
+        }
+      });
     });
 
     const titleInput = this.container.querySelector<HTMLInputElement>('#pointage-create-title');
@@ -267,12 +307,13 @@ export class PointageView {
     const dateInput = this.container.querySelector<HTMLInputElement>('#pointage-create-date');
     const dateReadable = this.container.querySelector<HTMLElement>('#pointage-create-date-readable');
     if (dateInput) {
-      const onDateInput = () => {
+      const onDateInput = async () => {
         if (dateInput.value) {
           this.options.date = dateInput.value;
           if (dateReadable) {
             dateReadable.textContent = formatReadableDate(dateInput.value);
           }
+          this.dayEvents = await getEventsByDate(dateInput.value);
         }
       };
       dateInput.addEventListener('input', onDateInput);
@@ -305,7 +346,7 @@ export class PointageView {
           description: customDesc,
         });
 
-        showToast(`Séance « ${newEvent.title} » créée !`);
+        showToast(`Séance « ${newEvent.title} » prête !`);
         this.options.date = selectedDate;
         this.options.eventId = newEvent.id;
         this.activeEvent = newEvent;
@@ -321,21 +362,7 @@ export class PointageView {
   }
 
   private renderStudentListHtml(): string {
-    if (this.students.length === 0) {
-      const hasTypedQuery = this.searchQuery.trim().length > 0;
-      return `
-        <div style="text-align: center; padding: 32px 16px; color: var(--text-muted);">
-          <p>Aucun élève ne correspond aux critères de recherche.</p>
-          ${hasTypedQuery ? `
-            <button type="button" class="btn btn-primary" id="pointage-add-quick" style="margin-top: 16px;">
-              ${STRINGS.actions.addStudent} « ${this.escapeHtml(this.searchQuery.trim())} »
-            </button>
-          ` : ''}
-        </div>
-      `;
-    }
-
-    return this.students
+    const studentCardsHtml = this.students
       .map((student) => {
         const isPresent = this.attendanceMap.get(student.id) || false;
         return `
@@ -355,6 +382,19 @@ export class PointageView {
         `;
       })
       .join('');
+
+    const emptyMessageHtml = this.students.length === 0
+      ? `<div style="text-align: center; padding: 20px 16px; color: var(--text-muted); font-size: 0.88rem;">Aucun élève ne correspond aux critères de recherche.</div>`
+      : '';
+
+    const addStudentCardHtml = `
+      <div class="student-card add-student-card" id="pointage-add-student-card" style="border: 2px dashed var(--accent-active); background: var(--bg-surface); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px; margin-top: 8px; border-radius: var(--radius-md); color: var(--accent-active); font-weight: 700;">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        <span>+ Ajouter un nouvel élève</span>
+      </div>
+    `;
+
+    return emptyMessageHtml + studentCardsHtml + addStudentCardHtml;
   }
 
   private async updateFilteredListOnly(): Promise<void> {
@@ -388,7 +428,7 @@ export class PointageView {
   }
 
   private attachCardEventsOnly(): void {
-    const cards = this.container.querySelectorAll<HTMLElement>(`#pointage-student-list .student-card`);
+    const cards = this.container.querySelectorAll<HTMLElement>(`#pointage-student-list .student-card:not(#pointage-add-student-card)`);
     cards.forEach((card) => {
       card.addEventListener('click', async () => {
         const studentId = card.dataset.studentId;
@@ -421,29 +461,189 @@ export class PointageView {
       });
     });
 
+    const addStudentCard = this.container.querySelector('#pointage-add-student-card');
+    if (addStudentCard) {
+      addStudentCard.addEventListener('click', () => {
+        this.openAddStudentModal(this.searchQuery.trim());
+      });
+    }
+
     const quickAddBtn = this.container.querySelector('#pointage-add-quick');
     if (quickAddBtn) {
-      quickAddBtn.addEventListener('click', async () => {
-        if (!this.activeEvent) return;
-        const typedName = this.searchQuery.trim();
-        const parts = typedName.split(' ');
-        const firstName = parts[0] || typedName;
-        const lastName = parts.slice(1).join(' ') || 'Élève';
+      quickAddBtn.addEventListener('click', () => {
+        this.openAddStudentModal(this.searchQuery.trim());
+      });
+    }
+  }
 
-        const defaultYear = this.yearsList[0] || '1A';
-        const newStudent = await createStudent({
-          firstName,
-          lastName,
-          gender: 'F',
-          year: defaultYear,
-          active: true,
-        });
+  private async openAddStudentModal(initialName = ''): Promise<void> {
+    const modalContainer = this.container.querySelector('#pointage-modal-container');
+    if (!modalContainer || !this.activeEvent) return;
 
+    let selectedGender: 'F' | 'M' = 'F';
+    let defaultFirst = '';
+    let defaultLast = '';
+
+    if (initialName.trim()) {
+      const parts = initialName.trim().split(' ');
+      defaultFirst = parts[0] || '';
+      defaultLast = parts.slice(1).join(' ') || '';
+    }
+
+    const defaultYear = this.selectedYears.find((y) => y !== 'all') || this.yearsList[0] || '1A';
+
+    modalContainer.innerHTML = `
+      <div class="modal-overlay" id="pointage-modal-overlay">
+        <div class="modal-content">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700;">
+              Ajouter un élève
+            </h3>
+            <button type="button" class="btn btn-secondary" id="pointage-modal-close-btn" style="min-height: 36px; padding: 0 10px;">✕</button>
+          </div>
+
+          <form id="pointage-new-student-form" style="display: flex; flex-direction: column; gap: 14px;">
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                ${STRINGS.student.firstName} *
+              </label>
+              <input type="text" id="pointage-form-first-name" class="search-input" value="${this.escapeHtml(defaultFirst)}" placeholder="ex: Lucas" required />
+            </div>
+
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                ${STRINGS.student.lastName} *
+              </label>
+              <input type="text" id="pointage-form-last-name" class="search-input" value="${this.escapeHtml(defaultLast)}" placeholder="ex: Dubois" required />
+            </div>
+
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                ${STRINGS.student.gender} *
+              </label>
+              <div id="pointage-form-gender-toggle">
+                ${renderSegmentedToggle(
+                  [
+                    { value: 'F', label: STRINGS.student.female },
+                    { value: 'M', label: STRINGS.student.male },
+                  ],
+                  selectedGender
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                ${STRINGS.student.year} *
+              </label>
+              <select id="pointage-form-year-select" class="search-input" style="appearance: auto;">
+                ${this.yearsList
+                  .map(
+                    (yr) => `
+                  <option value="${yr}" ${yr === defaultYear ? 'selected' : ''}>${yr}</option>
+                `
+                  )
+                  .join('')}
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="pointage-form-internal-checkbox" />
+              <label for="pointage-form-internal-checkbox" style="font-size: var(--font-size-sm); font-weight: 600;">
+                Élève Interne (EstInterne)
+              </label>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+              <button type="button" class="btn btn-secondary" id="pointage-form-cancel-btn" style="flex: 1; min-height: 42px;">
+                ${STRINGS.actions.cancel}
+              </button>
+              <button type="button" class="btn btn-secondary" id="pointage-form-save-only-btn" style="flex: 1; min-height: 42px;">
+                Créer seulement
+              </button>
+              <button type="submit" class="btn btn-primary" id="pointage-form-save-and-check-btn" style="flex: 1.5; min-height: 42px; font-weight: 700;">
+                Créer et pointer
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const closeOverlay = () => {
+      modalContainer.innerHTML = '';
+    };
+
+    const overlay = modalContainer.querySelector('#pointage-modal-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeOverlay();
+      });
+    }
+
+    const closeBtn = modalContainer.querySelector('#pointage-modal-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', closeOverlay);
+
+    const cancelBtn = modalContainer.querySelector('#pointage-form-cancel-btn');
+    if (cancelBtn) cancelBtn.addEventListener('click', closeOverlay);
+
+    const genderContainer = modalContainer.querySelector('#pointage-form-gender-toggle') as HTMLElement;
+    if (genderContainer) {
+      setupSegmentedToggleEvents(genderContainer, (val) => {
+        selectedGender = val as 'F' | 'M';
+      });
+    }
+
+    const handleSave = async (andCheckPresent: boolean) => {
+      const firstNameInput = modalContainer.querySelector<HTMLInputElement>('#pointage-form-first-name');
+      const lastNameInput = modalContainer.querySelector<HTMLInputElement>('#pointage-form-last-name');
+      const yearSelect = modalContainer.querySelector<HTMLSelectElement>('#pointage-form-year-select');
+      const isInternal = modalContainer.querySelector<HTMLInputElement>('#pointage-form-internal-checkbox')?.checked ?? false;
+
+      const firstName = firstNameInput?.value.trim() || '';
+      const lastName = lastNameInput?.value.trim() || '';
+      const year = yearSelect?.value.trim() || '1A';
+
+      if (!firstName || !lastName || !year) {
+        showToast('Veuillez remplir le prénom, le nom et la classe.');
+        return;
+      }
+
+      const newStudent = await createStudent({
+        firstName,
+        lastName,
+        gender: selectedGender,
+        year,
+        isInternal,
+        active: true,
+      });
+
+      if (andCheckPresent && this.activeEvent) {
         await toggleAttendance(this.activeEvent.id, newStudent.id, this.options.date, this.activeEvent.type, true);
-        showToast(`Élève ${firstName} créé et pointé !`);
-        this.searchQuery = '';
-        await this.loadDataAndRender();
-        this.options.onRefreshNeeded();
+        this.attendanceMap.set(newStudent.id, true);
+        showToast(`Élève ${firstName} ${lastName} créé et pointé !`);
+      } else {
+        showToast(`Élève ${firstName} ${lastName} créé.`);
+      }
+
+      closeOverlay();
+      this.searchQuery = '';
+      await this.loadDataAndRender();
+      this.options.onRefreshNeeded();
+    };
+
+    const form = modalContainer.querySelector<HTMLFormElement>('#pointage-new-student-form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        handleSave(true);
+      });
+    }
+
+    const saveOnlyBtn = modalContainer.querySelector('#pointage-form-save-only-btn');
+    if (saveOnlyBtn) {
+      saveOnlyBtn.addEventListener('click', () => {
+        handleSave(false);
       });
     }
   }
@@ -453,13 +653,17 @@ export class PointageView {
     if (validateBtn) {
       validateBtn.addEventListener('click', async () => {
         showToast('Séance enregistrée !');
-        this.activeEvent = null;
-        this.isCreatingNewEvent = true;
-        if (this.options.onCreationModeChange) {
-          this.options.onCreationModeChange(true);
+        if (this.activeEvent && this.options.onValidateSession) {
+          this.options.onValidateSession(this.activeEvent.id, this.options.date, this.options.type);
+        } else {
+          this.activeEvent = null;
+          this.isCreatingNewEvent = true;
+          if (this.options.onCreationModeChange) {
+            this.options.onCreationModeChange(true);
+          }
+          await this.loadDataAndRender();
+          this.options.onRefreshNeeded();
         }
-        await this.loadDataAndRender();
-        this.options.onRefreshNeeded();
       });
     }
 
@@ -537,3 +741,4 @@ export class PointageView {
       .replace(/"/g, '&quot;');
   }
 }
+

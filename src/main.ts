@@ -190,6 +190,11 @@ class App {
           this.headerState.showTopo = true;
           await this.updateDaySummaryHeader();
         },
+        onValidateSession: (eventId, date, type) => {
+          this.headerState.date = date;
+          this.headerState.type = type;
+          this.router.navigate(`#/jour?eventId=${eventId}&date=${date}&type=${type}`);
+        },
       });
       pointageView.render();
     });
@@ -212,9 +217,19 @@ class App {
         onDeleteSession: () => {
           this.router.navigate('#/historique');
         },
+        onResumePointage: (eventId, date, type) => {
+          if (date) this.headerState.date = date;
+          if (type) this.headerState.type = type;
+          if (eventId) {
+            this.router.navigate(`#/pointage?eventId=${eventId}&date=${date || this.headerState.date}&type=${type || this.headerState.type}`);
+          } else {
+            this.router.navigate(`#/pointage?date=${date || this.headerState.date}&type=${type || this.headerState.type}`);
+          }
+        },
       });
       jourView.render();
     });
+
 
     // Route Élèves
     this.router.addRoute('#/eleves', async () => {

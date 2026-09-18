@@ -16,6 +16,7 @@ export interface JourViewOptions {
   onStudentCardClick: (studentId: string) => void;
   onRefreshNeeded: () => void;
   onDeleteSession?: () => void;
+  onResumePointage?: (eventId?: string, date?: string, type?: 'presence' | 'course') => void;
 }
 
 export class JourView {
@@ -112,6 +113,9 @@ export class JourView {
             </div>
           </div>
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-primary" id="jour-resume-pointage-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem; font-weight: 700;">
+              Pointer / Modifier
+            </button>
             <button class="btn btn-secondary" id="jour-copy-summary-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
               ${STRINGS.actions.copySummary}
             </button>
@@ -206,6 +210,15 @@ export class JourView {
     eventTitle: string,
     sortedPresentList: Array<{ student: StudentRecord; attendance: any }>
   ): void {
+    const resumeBtn = this.container.querySelector('#jour-resume-pointage-btn');
+    if (resumeBtn) {
+      resumeBtn.addEventListener('click', () => {
+        if (this.options.onResumePointage) {
+          this.options.onResumePointage(this.currentEvent?.id, this.options.date, this.activeTab);
+        }
+      });
+    }
+
     setupSegmentedToggleEvents(this.container, (val) => {
       this.activeTab = val as 'presence' | 'course';
       this.options.eventId = undefined;
@@ -252,6 +265,7 @@ export class JourView {
         }
       });
     }
+
 
     // Appui pour ouvrir la fiche ou annuler
     const cards = this.container.querySelectorAll<HTMLElement>('.student-card');
