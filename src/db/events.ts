@@ -2,9 +2,12 @@ import { db, type EventRecord } from './schema';
 export type { EventRecord };
 import { generateUUID } from '../domain/ids';
 import { formatDateBrussels } from '../domain/dates';
+import { getAllowMultipleSessionsPerDay } from './meta';
 
 /**
  * Crée un nouvel événement (séance d'entraînement ou course).
+ * Si plusieurs séances du même type par jour ne sont pas autorisées,
+ * réutilise la séance existante au lieu de créer un doublon.
  */
 export async function createEvent(data: {
   date: string;
@@ -14,6 +17,29 @@ export async function createEvent(data: {
   id?: string;
 }): Promise<EventRecord> {
   const normDate = formatDateBrussels(data.date);
+  const allowMultiple = await getAllowMultipleSessionsPerDay();
+
+  if (!allowMultiple) {
+    const existingEvents = await getEventsByDateAndType(normDate, data.type);
+    if (existingEvents.length > 0) {
+      const existing = existingEvents[0];
+      const customTitle = data.title && data.title.trim();
+      const hasMeaningfulTitle = customTitle && customTitle !== 'Nouvelle entrée' && customTitle !== (data.type === 'course' ? 'Course' : 'Entraînement standard');
+      const newTitle = hasMeaningfulTitle ? customTitle : existing.title;
+      const newDesc = (data.description !== undefined && data.description.trim()) ? data.description.trim() : existing.description;
+
+      const updated: EventRecord = {
+        ...existing,
+        title: newTitle,
+        description: newDesc,
+        updatedAt: Date.now(),
+        dirty: 1,
+      };
+      await db.events.put(updated);
+      return updated;
+    }
+  }
+
   const now = Date.now();
   const id = data.id || generateUUID();
   const defaultTitle = data.type === 'course' ? 'Course' : 'Entraînement standard';
@@ -33,6 +59,7 @@ export async function createEvent(data: {
   await db.events.put(event);
   return event;
 }
+
 
 /**
  * Met à jour les informations d'un événement existant.
@@ -144,3 +171,68 @@ export async function markEventsSynced(ids: string[]): Promise<void> {
 export async function clearAllEvents(): Promise<void> {
   await db.events.clear();
 }
+
+/**
+ * Fusionne et nettoie les événements doublons ayant la même date et le même type
+ * si l'option de sessions multiples est désactivée.
+ */
+export async function deduplicateEvents(): Promise<number> {
+  const allowMultiple = await getAllowMultipleSessionsPerDay();
+  if (allowMultiple) return 0;
+
+  const all = await db.events.toArray();
+  const groups = new Map<string, EventRecord[]>();
+
+  for (const ev of all) {
+    const normDate = formatDateBrussels(ev.date);
+    const key = `${normDate}_${ev.type}`;
+    const list = groups.get(key) || [];
+    list.push(ev);
+    groups.set(key, list);
+  }
+
+  let deletedCount = 0;
+
+  for (const [, events] of groups) {
+    if (events.length <= 1) continue;
+
+    // Trier pour garder le plus pertinent (titre personnalisé ou mise à jour la plus récente)
+    events.sort((a, b) => {
+      const aHasCustomTitle = a.title && a.title !== 'Entraînement standard' && a.title !== 'Course' && a.title !== 'Nouvelle entrée';
+      const bHasCustomTitle = b.title && b.title !== 'Entraînement standard' && b.title !== 'Course' && b.title !== 'Nouvelle entrée';
+      if (aHasCustomTitle && !bHasCustomTitle) return -1;
+      if (!aHasCustomTitle && bHasCustomTitle) return 1;
+      return b.updatedAt - a.updatedAt;
+    });
+
+    const primary = events[0];
+    const duplicates = events.slice(1);
+
+    await db.transaction('rw', [db.events, db.attendances], async () => {
+      for (const dup of duplicates) {
+        // Réaffecter les pointages du doublon vers l'événement principal
+        const attendances = await db.attendances.where('eventId').equals(dup.id).toArray();
+        for (const att of attendances) {
+          const newId = `${primary.id}_${att.studentId}`;
+          const existingInPrimary = await db.attendances.get(newId);
+          if (!existingInPrimary) {
+            await db.attendances.put({
+              ...att,
+              id: newId,
+              eventId: primary.id,
+              date: primary.date,
+              type: primary.type,
+              dirty: 1,
+            });
+          }
+          await db.attendances.delete(att.id);
+        }
+        await db.events.delete(dup.id);
+        deletedCount++;
+      }
+    });
+  }
+
+  return deletedCount;
+}
+

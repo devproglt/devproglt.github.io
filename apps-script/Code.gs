@@ -530,9 +530,49 @@ function nettoyerDoublonsSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const attendancesSheet = ss.getSheetByName('attendances');
   const studentsSheet = ss.getSheetByName('students');
+  const eventsSheet = ss.getSheetByName('events');
 
   let attRemoved = 0;
   let studRemoved = 0;
+  let evRemoved = 0;
+
+  if (eventsSheet) {
+    const values = eventsSheet.getDataRange().getValues();
+    if (values.length > 1) {
+      const seen = {};
+      const rowsToKeep = [values[0]]; // En-têtes
+
+      for (let i = 1; i < values.length; i++) {
+        const row = values[i];
+        if (!row[0] && !row[1]) continue;
+
+        const cleanDate = normalizeDateVal(row[1]);
+        const cleanType = String(row[2] || 'presence').trim().toLowerCase() === 'course' ? 'course' : 'presence';
+        const key = cleanDate + '_' + cleanType;
+
+        row[1] = cleanDate;
+        row[2] = cleanType;
+
+        if (seen[key]) {
+          const prevIdx = seen[key];
+          const prevUpdatedAt = parseInt(rowsToKeep[prevIdx][6] || 0, 10);
+          const curUpdatedAt = parseInt(row[6] || 0, 10);
+          if (curUpdatedAt >= prevUpdatedAt) {
+            rowsToKeep[prevIdx] = row;
+          }
+          evRemoved++;
+        } else {
+          seen[key] = rowsToKeep.length;
+          rowsToKeep.push(row);
+        }
+      }
+
+      eventsSheet.clearContents();
+      if (rowsToKeep.length > 0) {
+        eventsSheet.getRange(1, 1, rowsToKeep.length, rowsToKeep[0].length).setValues(rowsToKeep);
+      }
+    }
+  }
 
   if (attendancesSheet) {
     const values = attendancesSheet.getDataRange().getValues();
@@ -611,9 +651,10 @@ function nettoyerDoublonsSheet() {
   }
 
   try {
-    SpreadsheetApp.getUi().alert('Nettoyage terminé !\n- Pointages : ' + attRemoved + ' doublon(s) purgé(s)\n- Élèves : ' + studRemoved + ' doublon(s) purgé(s)');
+    SpreadsheetApp.getUi().alert('Nettoyage terminé !\n- Séances : ' + evRemoved + ' doublon(s) purgé(s)\n- Pointages : ' + attRemoved + ' doublon(s) purgé(s)\n- Élèves : ' + studRemoved + ' doublon(s) purgé(s)');
   } catch (e) {
-    Logger.log('Nettoyage terminé : ' + attRemoved + ' pointages, ' + studRemoved + ' élèves.');
+    Logger.log('Nettoyage terminé : ' + evRemoved + ' séances, ' + attRemoved + ' pointages, ' + studRemoved + ' élèves.');
   }
 }
+
 

@@ -8,7 +8,23 @@ const TIMEZONE = 'Europe/Brussels';
  * Retourne la date courante au format YYYY-MM-DD dans le fuseau horaire Europe/Brussels.
  */
 export function getTodayBrussels(): string {
-  return formatDateBrussels(new Date());
+  try {
+    const formatter = new Intl.DateTimeFormat('fr-CA', {
+      timeZone: TIMEZONE,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const formatted = formatter.format(new Date());
+    if (/^\d{4}-\d{2}-\d{2}$/.test(formatted)) {
+      return formatted;
+    }
+  } catch {}
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 /**
@@ -18,7 +34,11 @@ export function formatDateBrussels(dateInput: Date | number | string): string {
   if (!dateInput) return getTodayBrussels();
   try {
     if (typeof dateInput === 'string') {
-      const trimmed = dateInput.trim();
+      let trimmed = dateInput.trim();
+      // Correction automatique de résidu 2001 vers 2026
+      if (trimmed.startsWith('2001-')) {
+        trimmed = '2026-' + trimmed.substring(5);
+      }
       if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
         return trimmed;
       }
@@ -31,7 +51,8 @@ export function formatDateBrussels(dateInput: Date | number | string): string {
         if (parts.length === 3) {
           // Check if format is YYYY/MM/DD
           if (parts[0].length === 4) {
-            const y = parts[0];
+            let y = parts[0];
+            if (y === '2001') y = '2026';
             const m = parts[1].padStart(2, '0');
             const d = parts[2].padStart(2, '0');
             return `${y}-${m}-${d}`;
@@ -43,11 +64,15 @@ export function formatDateBrussels(dateInput: Date | number | string): string {
           if (y.length === 2) {
             y = `20${y}`;
           }
+          if (y === '2001') y = '2026';
           return `${y}-${m}-${d}`;
         }
       }
       if (trimmed.includes('T')) {
-        const sub = trimmed.substring(0, 10);
+        let sub = trimmed.substring(0, 10);
+        if (sub.startsWith('2001-')) {
+          sub = '2026-' + sub.substring(5);
+        }
         if (/^\d{4}-\d{2}-\d{2}$/.test(sub)) {
           return sub;
         }
@@ -57,19 +82,21 @@ export function formatDateBrussels(dateInput: Date | number | string): string {
     const date = new Date(dateInput);
     if (isNaN(date.getTime())) return String(dateInput);
 
-    const formatter = new Intl.DateTimeFormat('fr-BE', {
+    const formatter = new Intl.DateTimeFormat('fr-CA', {
       timeZone: TIMEZONE,
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
     });
+    const formatted = formatter.format(date);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(formatted)) {
+      if (formatted.startsWith('2001-')) {
+        return '2026-' + formatted.substring(5);
+      }
+      return formatted;
+    }
 
-    const parts = formatter.formatToParts(date);
-    const day = parts.find((p) => p.type === 'day')?.value || '01';
-    const month = parts.find((p) => p.type === 'month')?.value || '01';
-    const year = parts.find((p) => p.type === 'year')?.value || '2026';
-
-    return `${year}-${month}-${day}`;
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   } catch {
     return String(dateInput);
   }

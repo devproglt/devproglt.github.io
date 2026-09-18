@@ -40,3 +40,12 @@ export async function addYearIfMissing(year: string): Promise<string[]> {
   }
   return years;
 }
+
+export async function getAllowMultipleSessionsPerDay(): Promise<boolean> {
+  return await getMeta<boolean>('allowMultipleSessionsPerDay', false);
+}
+
+export async function setAllowMultipleSessionsPerDay(allow: boolean): Promise<void> {
+  await setMeta('allowMultipleSessionsPerDay', allow);
+}
+

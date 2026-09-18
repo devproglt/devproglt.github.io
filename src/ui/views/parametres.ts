@@ -1,11 +1,12 @@
 import { STRINGS } from '../strings';
 import { showToast } from '../components/toast';
 import { openImportMappingModal } from '../components/import-modal';
-import { getMeta, setMeta, getDeviceId } from '../../db/meta';
+import { getMeta, setMeta, getDeviceId, getAllowMultipleSessionsPerDay, setAllowMultipleSessionsPerDay } from '../../db/meta';
 import { SyncEngine } from '../../sync/engine';
 import { downloadImportTemplate } from '../../io/import';
 import { getAllStudents, clearAllStudentsAndData, deduplicateStudents } from '../../db/students';
 import { getAllAttendances, clearAllAttendances, normalizeAndRepairAttendances } from '../../db/attendances';
+import { deduplicateEvents } from '../../db/events';
 import { db } from '../../db/schema';
 import { getTodayBrussels } from '../../domain/dates';
 
@@ -32,6 +33,7 @@ export class ParametresView {
     const syncToken = await getMeta<string>('syncToken', '');
     const deviceName = await getDeviceId();
     const lastSyncAt = await getMeta<number | null>('lastSyncAt', null);
+    const allowMultipleSessions = await getAllowMultipleSessionsPerDay();
 
     const engine = SyncEngine.getInstance();
     const pendingCount = await engine.getPendingCount();
@@ -41,6 +43,19 @@ export class ParametresView {
     this.container.innerHTML = `
       <div style="padding: 16px; display: flex; flex-direction: column; gap: 20px;">
         <h2>${STRINGS.nav.parametres}</h2>
+
+        <!-- Options de séances -->
+        <section style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 10px;">
+          <h3 style="font-size: var(--font-size-base); font-weight: 700;">Séances & Entraînements</h3>
+          
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-size: var(--font-size-sm); color: var(--text-primary);">
+            <input type="checkbox" id="param-allow-multiple-sessions" ${allowMultipleSessions ? 'checked' : ''} style="width: 18px; height: 18px; cursor: pointer; accent-color: var(--accent-active);" />
+            <span>Autoriser plusieurs séances du même type par jour</span>
+          </label>
+          <span style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: -4px;">
+            Si désactivé (recommandé), un seul entraînement et une seule course peuvent exister par date pour éviter les doublons accidentels.
+          </span>
+        </section>
 
         <!-- Synchronisation Google Sheets -->
         <section style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 12px;">
@@ -86,9 +101,10 @@ export class ParametresView {
           </button>
 
           <button class="btn btn-secondary" id="param-clean-duplicates-btn" style="width: 100%; margin-top: 4px;">
-            Nettoyer et fusionner les doublons (Élèves & Présences)
+            Nettoyer et fusionner les doublons (Élèves, Présences & Séances)
           </button>
         </section>
+
 
         <!-- Import / Export Excel -->
         <section style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 12px;">
@@ -246,13 +262,33 @@ export class ParametresView {
       });
     }
 
+    const allowMultipleCb = this.container.querySelector<HTMLInputElement>('#param-allow-multiple-sessions');
+    if (allowMultipleCb) {
+      allowMultipleCb.addEventListener('change', async () => {
+        const isChecked = allowMultipleCb.checked;
+        await setAllowMultipleSessionsPerDay(isChecked);
+        if (!isChecked) {
+          const mergedEvents = await deduplicateEvents();
+          if (mergedEvents > 0) {
+            showToast(`Option enregistrée : ${mergedEvents} séance(s) en double fusionnée(s).`);
+          } else {
+            showToast('Option enregistrée : séance unique par jour activée.');
+          }
+        } else {
+          showToast('Option enregistrée : séances multiples par jour autorisées.');
+        }
+        this.options.onRefreshNeeded();
+      });
+    }
+
     const cleanDupBtn = this.container.querySelector('#param-clean-duplicates-btn');
     if (cleanDupBtn) {
       cleanDupBtn.addEventListener('click', async () => {
         showToast('Analyse et fusion des doublons...');
         const mergedStudents = await deduplicateStudents();
+        const mergedEvents = await deduplicateEvents();
         const repairedAttendances = await normalizeAndRepairAttendances();
-        showToast(`Nettoyage terminé : ${mergedStudents} élève(s) fusionné(s), ${repairedAttendances} pointage(s) réparé(s) !`);
+        showToast(`Nettoyage terminé : ${mergedStudents} élève(s), ${mergedEvents} séance(s), ${repairedAttendances} pointage(s) fusionnés/réparés !`);
         await this.loadDataAndRender();
         this.options.onRefreshNeeded();
       });
@@ -267,6 +303,7 @@ export class ParametresView {
 
     // Modal interactive de mapping d'importation Excel
     const importFileInput = this.container.querySelector<HTMLInputElement>('#param-import-file');
+
     if (importFileInput) {
       importFileInput.addEventListener('change', () => {
         const file = importFileInput.files?.[0];

@@ -138,14 +138,17 @@ export class PointageView {
               </div>
             </div>
 
-            <div style="display: flex; gap: 6px;">
+            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
               ${this.dayEvents.length > 1 ? `
                 <select id="pointage-event-select" class="search-input" style="width: auto; min-height: 34px; padding: 0 8px; font-size: 0.75rem;">
                   ${this.dayEvents.map((ev) => `<option value="${ev.id}" ${ev.id === this.activeEvent?.id ? 'selected' : ''}>${this.escapeHtml(ev.title)} (${ev.type === 'presence' ? 'Entraînement' : 'Course'})</option>`).join('')}
                 </select>
               ` : ''}
+              <button class="btn btn-primary" id="pointage-validate-btn" style="min-height: 34px; padding: 0 12px; font-size: 0.8rem; font-weight: 700;">
+                Valider la séance
+              </button>
               <button class="btn btn-secondary" id="pointage-add-event-btn" style="min-height: 34px; padding: 0 10px; font-size: 0.75rem;">
-                + Nouvelle séance
+                + Nouvelle entrée
               </button>
             </div>
           </div>
@@ -202,14 +205,29 @@ export class PointageView {
             <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 6px;">
               Titre de l'entrée
             </label>
-            <input type="text" id="pointage-create-title" class="search-input" value="Nouvelle entrée" placeholder="ex: Entraînement standard, Demi-fond, Cross..." />
+            <input
+              type="text"
+              id="pointage-create-title"
+              class="search-input"
+              placeholder="Nouvelle entrée"
+              autocomplete="off"
+            />
           </div>
 
           <div>
-            <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 6px;">
-              Date de l'entrée
+            <label style="font-size: var(--font-size-xs); font-weight: 600; display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span>Date de l'entrée</span>
+              <span id="pointage-create-date-readable" style="font-weight: 500; color: var(--text-muted); font-size: 0.75rem;">
+                ${formatReadableDate(this.options.date)}
+              </span>
             </label>
-            <input type="date" id="pointage-create-date" class="search-input" value="${this.options.date}" style="min-height: 38px; padding: 4px 8px; font-size: 0.85rem;" />
+            <input
+              type="date"
+              id="pointage-create-date"
+              class="search-input"
+              value="${this.options.date}"
+              style="min-height: 38px; padding: 4px 8px; font-size: 0.85rem;"
+            />
           </div>
 
           <div>
@@ -239,6 +257,28 @@ export class PointageView {
       applyAccentTheme(newType);
     });
 
+    const titleInput = this.container.querySelector<HTMLInputElement>('#pointage-create-title');
+    if (titleInput) {
+      titleInput.addEventListener('focus', () => {
+        titleInput.select();
+      });
+    }
+
+    const dateInput = this.container.querySelector<HTMLInputElement>('#pointage-create-date');
+    const dateReadable = this.container.querySelector<HTMLElement>('#pointage-create-date-readable');
+    if (dateInput) {
+      const onDateInput = () => {
+        if (dateInput.value) {
+          this.options.date = dateInput.value;
+          if (dateReadable) {
+            dateReadable.textContent = formatReadableDate(dateInput.value);
+          }
+        }
+      };
+      dateInput.addEventListener('input', onDateInput);
+      dateInput.addEventListener('change', onDateInput);
+    }
+
     const cancelBtn = this.container.querySelector('#pointage-cancel-create-btn');
     if (cancelBtn) {
       cancelBtn.addEventListener('click', () => {
@@ -250,13 +290,13 @@ export class PointageView {
     const startBtn = this.container.querySelector('#pointage-start-session-btn');
     if (startBtn) {
       startBtn.addEventListener('click', async () => {
-        const titleInput = this.container.querySelector<HTMLInputElement>('#pointage-create-title');
-        const dateInput = this.container.querySelector<HTMLInputElement>('#pointage-create-date');
-        const descInput = this.container.querySelector<HTMLInputElement>('#pointage-create-desc');
+        const titleInputEl = this.container.querySelector<HTMLInputElement>('#pointage-create-title');
+        const dateInputEl = this.container.querySelector<HTMLInputElement>('#pointage-create-date');
+        const descInputEl = this.container.querySelector<HTMLInputElement>('#pointage-create-desc');
 
-        const customTitle = titleInput?.value.trim() || 'Nouvelle entrée';
-        const selectedDate = dateInput?.value.trim() || this.options.date;
-        const customDesc = descInput?.value.trim() || '';
+        const customTitle = titleInputEl?.value.trim() || 'Nouvelle entrée';
+        const selectedDate = dateInputEl?.value.trim() || this.options.date;
+        const customDesc = descInputEl?.value.trim() || '';
 
         const newEvent = await createEvent({
           date: selectedDate,
@@ -409,6 +449,20 @@ export class PointageView {
   }
 
   private attachEvents(): void {
+    const validateBtn = this.container.querySelector('#pointage-validate-btn');
+    if (validateBtn) {
+      validateBtn.addEventListener('click', async () => {
+        showToast('Séance enregistrée !');
+        this.activeEvent = null;
+        this.isCreatingNewEvent = true;
+        if (this.options.onCreationModeChange) {
+          this.options.onCreationModeChange(true);
+        }
+        await this.loadDataAndRender();
+        this.options.onRefreshNeeded();
+      });
+    }
+
     const addEventBtn = this.container.querySelector('#pointage-add-event-btn');
     if (addEventBtn) {
       addEventBtn.addEventListener('click', () => {

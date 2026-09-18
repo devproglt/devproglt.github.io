@@ -1,5 +1,5 @@
 import { STRINGS } from '../strings';
-import { getTodayBrussels } from '../../domain/dates';
+import { getTodayBrussels, formatReadableDate } from '../../domain/dates';
 
 export interface HeaderState {
   date: string;
@@ -62,9 +62,11 @@ export function renderHeader(state: HeaderState): string {
       </div>
 
       ${state.showTopo ? `
-      <!-- Ligne Date réduite + Topo Total, G, F, I (Prise de présences uniquement) -->
+      <!-- Ligne Date fixe + Topo Total, G, F, I (Prise de présences uniquement) -->
       <div style="display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-top: 4px;">
-        <input type="date" id="header-date-input" value="${state.date}" class="search-input" style="width: 130px; min-height: 38px; padding: 2px 8px; font-size: 0.85rem;" />
+        <div class="header-date-badge" style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 6px 10px; font-size: 0.8rem; font-weight: 700; white-space: nowrap; color: var(--text-primary); display: flex; align-items: center; justify-content: center;">
+          ${formatReadableDate(state.date)}
+        </div>
         
         <div id="header-summary-badge" style="flex: 1; display: flex; align-items: center; justify-content: space-around; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 6px 8px; font-size: 0.8rem; font-weight: 600; white-space: nowrap; gap: 4px;">
           <span style="color: var(--accent-active); font-size: 0.88rem; font-weight: 800;">Tot: ${summary.total}</span>
@@ -80,19 +82,9 @@ export function renderHeader(state: HeaderState): string {
 
 export function setupHeaderEvents(
   container: HTMLElement,
-  onDateChange: (date: string) => void,
   onSyncClick: () => void,
   onSettingsClick: () => void
 ): void {
-  const dateInput = container.querySelector<HTMLInputElement>('#header-date-input');
-  if (dateInput) {
-    dateInput.addEventListener('change', () => {
-      if (dateInput.value) {
-        onDateChange(dateInput.value);
-      }
-    });
-  }
-
   const syncBtn = container.querySelector('#header-sync-btn');
   if (syncBtn) {
     syncBtn.addEventListener('click', onSyncClick);
@@ -103,3 +95,4 @@ export function setupHeaderEvents(
     settingsBtn.addEventListener('click', onSettingsClick);
   }
 }
+

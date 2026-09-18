@@ -10,6 +10,7 @@ import { getTodayBrussels } from './domain/dates';
 import { SyncEngine, type SyncStatus } from './sync/engine';
 import { getAttendancesByDateAndType, normalizeAndRepairAttendances } from './db/attendances';
 import { getAllStudents, deduplicateStudents } from './db/students';
+import { deduplicateEvents } from './db/events';
 import { calculateDaySummary } from './domain/stats';
 
 import { PointageView } from './ui/views/pointage';
@@ -35,7 +36,6 @@ class App {
     daySummary: { total: 0, girls: 0, boys: 0, internals: 0 },
   };
 
-  private activeViewInstance: any = null;
   private updateSWHandler: (() => void) | null = null;
 
   constructor() {
@@ -99,6 +99,7 @@ class App {
 
     // 4. Déduplication et normalisation de sécurité initiale
     await deduplicateStudents();
+    await deduplicateEvents();
     await normalizeAndRepairAttendances();
 
     // 5. Configuration des routes
@@ -121,15 +122,6 @@ class App {
     headerContainer.innerHTML = renderHeader(this.headerState);
     setupHeaderEvents(
       headerContainer,
-      async (date) => {
-        this.headerState.date = date;
-        await this.updateDaySummaryHeader();
-        if (this.activeViewInstance && typeof this.activeViewInstance.updateOptions === 'function') {
-          this.activeViewInstance.updateOptions({ ...this.activeViewInstance.options, date });
-        } else if (this.activeViewInstance && typeof this.activeViewInstance.render === 'function') {
-          this.activeViewInstance.render();
-        }
-      },
       async () => {
         showToast('Synchronisation en cours...');
         const res = await this.syncEngine.triggerSync('header_button');
@@ -147,6 +139,7 @@ class App {
       }
     );
   }
+
 
   private renderNavbarUI(currentRoute: string): void {
     const navbarContainer = document.getElementById('navbar-container');
@@ -198,7 +191,6 @@ class App {
           await this.updateDaySummaryHeader();
         },
       });
-      this.activeViewInstance = pointageView;
       pointageView.render();
     });
 
@@ -221,7 +213,6 @@ class App {
           this.router.navigate('#/historique');
         },
       });
-      this.activeViewInstance = jourView;
       jourView.render();
     });
 
@@ -236,7 +227,6 @@ class App {
         },
         onRefreshNeeded: refreshCallback,
       });
-      this.activeViewInstance = elevesView;
       elevesView.render();
     });
 
@@ -267,7 +257,6 @@ class App {
           }
         },
       });
-      this.activeViewInstance = ficheView;
       ficheView.render();
     });
 
@@ -293,7 +282,6 @@ class App {
           }
         },
       });
-      this.activeViewInstance = historiqueView;
       historiqueView.render();
     });
 
@@ -327,7 +315,6 @@ class App {
           }
         },
       });
-      this.activeViewInstance = parametresView;
       parametresView.render();
     });
 
