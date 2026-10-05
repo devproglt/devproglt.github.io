@@ -3,11 +3,12 @@ import { showToast } from '../components/toast';
 import { renderSegmentedToggle, setupSegmentedToggleEvents } from '../components/toggle';
 import { getAllStudents, type StudentRecord } from '../../db/students';
 import { getAllAttendances, type AttendanceRecord } from '../../db/attendances';
-import { getAllEvents, type EventRecord } from '../../db/events';
+import { getAllEvents, updateEvent, createEvent, type EventRecord } from '../../db/events';
 import { getYearsList } from '../../db/meta';
 import { calculateAllStudentStats, extractYearLevel, type StudentStats } from '../../domain/stats';
 import { formatReadableDate } from '../../domain/dates';
 import { exportCurrentViewToExcel } from '../../io/export';
+import { db } from '../../db/schema';
 
 export interface HistoriqueViewOptions {
   onStudentCardClick: (studentId: string) => void;
@@ -82,10 +83,10 @@ export class HistoriqueView {
     const statsMap = calculateAllStudentStats(filteredAttendances);
 
     this.container.innerHTML = `
-      <div style="padding: 16px; display: flex; flex-direction: column; gap: 14px;">
+      <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 12px;">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
-          <h2>${STRINGS.nav.historique}</h2>
-          <button class="btn btn-primary" id="historique-export-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
+          <h2 style="font-size: 1.15rem; font-weight: 800;">${STRINGS.nav.historique}</h2>
+          <button class="btn btn-primary btn-xs" id="historique-export-btn" style="min-height: 32px; padding: 0 12px; font-size: 0.8rem;">
             ${STRINGS.actions.exportExcel}
           </button>
         </div>
@@ -101,15 +102,15 @@ export class HistoriqueView {
         </div>
 
         ${this.activeTab === 'students' ? `
-          <div style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-            <div style="flex: 1; min-width: 150px;">
-              <select id="historique-year-filter" class="search-input" style="min-height: 36px; padding: 4px 8px; font-size: 0.8rem; width: 100%;">
+          <div style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 8px 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+            <div style="flex: 1; min-width: 140px;">
+              <select id="historique-year-filter" class="search-input-compact" style="width: 100%; height: 32px; font-size: 0.78rem;">
                 <option value="all">Toutes les années</option>
                 ${this.yearsList.map((yr) => `<option value="${yr}" ${this.yearFilter === yr ? 'selected' : ''}>${yr}</option>`).join('')}
               </select>
             </div>
 
-            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; white-space: nowrap; cursor: pointer;">
+            <label style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; white-space: nowrap; cursor: pointer;">
               <input type="checkbox" id="historique-inactive-chk" ${this.includeInactive ? 'checked' : ''} />
               <span>Inclure inactifs</span>
             </label>
@@ -121,6 +122,8 @@ export class HistoriqueView {
           ? this.renderStudentsTableHtml(filteredStudents, statsMap)
           : this.renderDatesListHtml(filteredAttendances)}
       </div>
+
+      <div id="historique-modal-container"></div>
     `;
 
     this.attachEvents(statsMap);
@@ -265,7 +268,7 @@ export class HistoriqueView {
           const badgeBg = isPresence ? 'var(--accent-presence-light)' : 'var(--accent-course-light)';
 
           return `
-            <div class="historique-date-card" data-date="${s.date}" data-type="${s.type}" data-event-id="${s.eventId || ''}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; gap: 8px;">
+            <div class="historique-date-card" data-date="${s.date}" data-type="${s.type}" data-event-id="${s.eventId || ''}" style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; gap: 8px;">
               <div style="flex: 1; min-width: 0;">
                 <div style="font-size: var(--font-size-base); font-weight: 700; color: var(--text-primary);">${this.escapeHtml(s.title)}</div>
                 ${s.description ? `
@@ -277,10 +280,13 @@ export class HistoriqueView {
                   ${formatReadableDate(s.date)}
                 </div>
               </div>
-              <div style="display: flex; align-items: center; gap: 10px; flex-shrink: 0;">
-                <span style="background: ${badgeBg}; color: ${badgeColor}; padding: 4px 10px; border-radius: var(--radius-full); font-size: var(--font-size-xs); font-weight: 700;">
+              <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
+                <span style="background: ${badgeBg}; color: ${badgeColor}; padding: 3px 8px; border-radius: var(--radius-full); font-size: var(--font-size-xs); font-weight: 700;">
                   ${isPresence ? STRINGS.types.presence : STRINGS.types.course} (${s.count})
                 </span>
+                <button type="button" class="btn btn-secondary btn-xs historique-edit-session-btn" data-event-id="${s.eventId || ''}" data-date="${s.date}" data-type="${s.type}" data-title="${this.escapeHtml(s.title)}" data-desc="${this.escapeHtml(s.description)}" style="min-height: 28px; padding: 0 8px; font-size: 0.75rem;">
+                  ✏️ Modifier
+                </button>
                 <span style="color: var(--text-muted); font-size: 0.9rem; font-weight: 700;">→</span>
               </div>
             </div>
@@ -288,6 +294,159 @@ export class HistoriqueView {
         }).join('')}
       </div>
     `;
+  }
+
+  private openEditSessionModal(sessionData: {
+    eventId?: string;
+    date: string;
+    type: 'presence' | 'course';
+    title: string;
+    description: string;
+  }): void {
+    const modalContainer = this.container.querySelector('#historique-modal-container');
+    if (!modalContainer) return;
+
+    let selectedType: 'presence' | 'course' = sessionData.type;
+
+    modalContainer.innerHTML = `
+      <div class="modal-overlay" id="historique-edit-modal-overlay">
+        <div class="modal-content">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700;">
+              Modifier les informations de la séance
+            </h3>
+            <button type="button" class="btn btn-secondary btn-xs" id="historique-edit-modal-close-btn" style="min-height: 32px; padding: 0 10px;">✕</button>
+          </div>
+
+          <form id="historique-edit-session-form" style="display: flex; flex-direction: column; gap: 12px;">
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                Titre de la séance *
+              </label>
+              <input type="text" id="hist-edit-title" class="search-input" value="${this.escapeHtml(sessionData.title)}" required />
+            </div>
+
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                Date de la séance *
+              </label>
+              <input type="date" id="hist-edit-date" class="search-input" value="${sessionData.date}" style="min-height: 38px; padding: 4px 8px;" required />
+            </div>
+
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                Type de séance
+              </label>
+              <div id="hist-edit-type-toggle">
+                ${renderSegmentedToggle(
+                  [
+                    { value: 'presence', label: STRINGS.types.presence },
+                    { value: 'course', label: STRINGS.types.course },
+                  ],
+                  selectedType
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                Notes / Remarques / Thème (Détails supplémentaires)
+              </label>
+              <textarea id="hist-edit-desc" class="search-input" style="min-height: 70px; resize: vertical;">${this.escapeHtml(sessionData.description || '')}</textarea>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+              <button type="button" class="btn btn-secondary" id="hist-edit-cancel-btn" style="flex: 1; min-height: 40px;">
+                ${STRINGS.actions.cancel}
+              </button>
+              <button type="submit" class="btn btn-primary" style="flex: 1.5; min-height: 40px; font-weight: 700;">
+                ${STRINGS.actions.save}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const closeOverlay = () => {
+      modalContainer.innerHTML = '';
+    };
+
+    const overlay = modalContainer.querySelector('#historique-edit-modal-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeOverlay();
+      });
+    }
+
+    const closeBtn = modalContainer.querySelector('#historique-edit-modal-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', closeOverlay);
+
+    const cancelBtn = modalContainer.querySelector('#hist-edit-cancel-btn');
+    if (cancelBtn) cancelBtn.addEventListener('click', closeOverlay);
+
+    const typeToggleContainer = modalContainer.querySelector('#hist-edit-type-toggle') as HTMLElement;
+    if (typeToggleContainer) {
+      setupSegmentedToggleEvents(typeToggleContainer, (val) => {
+        selectedType = val as 'presence' | 'course';
+      });
+    }
+
+    const form = modalContainer.querySelector<HTMLFormElement>('#historique-edit-session-form');
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const titleInput = modalContainer.querySelector<HTMLInputElement>('#hist-edit-title');
+        const dateInput = modalContainer.querySelector<HTMLInputElement>('#hist-edit-date');
+        const descInput = modalContainer.querySelector<HTMLTextAreaElement>('#hist-edit-desc');
+
+        const newTitle = titleInput?.value.trim() || 'Séance';
+        const newDate = dateInput?.value.trim() || sessionData.date;
+        const newDesc = descInput?.value.trim() || '';
+
+        const origEventId = sessionData.eventId;
+        const origDate = sessionData.date;
+        const origType = sessionData.type;
+
+        if (origEventId) {
+          await updateEvent(origEventId, {
+            title: newTitle,
+            date: newDate,
+            type: selectedType,
+            description: newDesc,
+          });
+
+          if (newDate !== origDate || selectedType !== origType) {
+            await db.attendances.where('eventId').equals(origEventId).modify({
+              date: newDate,
+              type: selectedType,
+              dirty: 1,
+              updatedAt: Date.now(),
+            });
+          }
+        } else {
+          // Créer l'événement dans la base de données
+          const newEvent = await createEvent({
+            date: newDate,
+            type: selectedType,
+            title: newTitle,
+            description: newDesc,
+          });
+
+          await db.attendances.where('[date+type]').equals([origDate, origType]).modify({
+            eventId: newEvent.id,
+            date: newDate,
+            type: selectedType,
+            dirty: 1,
+            updatedAt: Date.now(),
+          });
+        }
+
+        showToast('Séance mise à jour !');
+        closeOverlay();
+        await this.loadDataAndRender();
+      });
+    }
   }
 
   private attachEvents(
@@ -353,10 +512,34 @@ export class HistoriqueView {
       });
     });
 
+    // Boutons de modification directe de séance
+    const editSessionBtns = this.container.querySelectorAll<HTMLButtonElement>('.historique-edit-session-btn');
+    editSessionBtns.forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const eventId = btn.dataset.eventId || undefined;
+        const date = btn.dataset.date || '';
+        const type = (btn.dataset.type || 'presence') as 'presence' | 'course';
+        const title = btn.dataset.title || '';
+        const description = btn.dataset.desc || '';
+
+        this.openEditSessionModal({
+          eventId,
+          date,
+          type,
+          title,
+          description,
+        });
+      });
+    });
+
     // Navigation cartes de dates / séances
     const dateCards = this.container.querySelectorAll<HTMLElement>('.historique-date-card');
     dateCards.forEach((card) => {
-      card.addEventListener('click', () => {
+      card.addEventListener('click', (e) => {
+        const target = e.target as HTMLElement;
+        if (target.closest('.historique-edit-session-btn')) return;
+
         const dateStr = card.dataset.date;
         const type = (card.dataset.type || 'presence') as 'presence' | 'course';
         const eventId = card.dataset.eventId || undefined;

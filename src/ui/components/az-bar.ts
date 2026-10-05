@@ -2,10 +2,12 @@ import type { StudentRecord } from '../../db/schema';
 import { normalizeText } from '../../domain/normalize';
 
 /**
- * Barre d'initiales A-Z.
- * Seules les lettres présentes dans les résultats sont actives.
+ * Barre d'initiales A-Z sur 2 lignes continues visibles en permanence.
+ * Ligne 1 : Tous + A à M
+ * Ligne 2 : N à Z
  */
-const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+const ROW1 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M'];
+const ROW2 = ['N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
 
 export function computeAvailableLetters(students: StudentRecord[]): Set<string> {
   const letters = new Set<string>();
@@ -24,35 +26,38 @@ export function computeAvailableLetters(students: StudentRecord[]): Set<string> 
   return letters;
 }
 
+function renderLetterBtn(letter: string, availableLetters: Set<string>, selectedLetter: string): string {
+  const isAvailable = availableLetters.has(letter);
+  const isSelected = selectedLetter === letter;
+
+  let classNames = 'az-letter';
+  if (isSelected) classNames += ' active';
+  if (isAvailable) classNames += ' available';
+  else classNames += ' disabled';
+
+  return `
+    <button type="button" class="${classNames}" data-letter="${letter}" ${!isAvailable && !isSelected ? 'disabled' : ''}>
+      ${letter}
+    </button>
+  `;
+}
+
 export function renderAZBar(availableLetters: Set<string>, selectedLetter: string): string {
-  const lettersHtml = ALPHABET.map((letter) => {
-    const isAvailable = availableLetters.has(letter);
-    const isSelected = selectedLetter === letter;
-
-    let classNames = 'az-letter';
-    if (isSelected) classNames += ' active';
-    if (isAvailable) classNames += ' available';
-    else classNames += ' disabled';
-
-    return `
-      <button type="button" class="${classNames}" data-letter="${letter}" ${!isAvailable && !isSelected ? 'disabled' : ''}>
-        ${letter}
-      </button>
-    `;
-  }).join('');
-
   const allSelected = selectedLetter === 'ALL' || !selectedLetter;
 
-  // 3 copies répétées de A-Z pour un défilement infini et continu sans à-coup
+  const row1Html = ROW1.map((letter) => renderLetterBtn(letter, availableLetters, selectedLetter)).join('');
+  const row2Html = ROW2.map((letter) => renderLetterBtn(letter, availableLetters, selectedLetter)).join('');
+
   return `
-    <div class="az-bar" aria-label="Filtre par initiale">
-      <button type="button" class="az-all-btn ${allSelected ? 'active' : 'available'}" data-letter="ALL">
-        Tous
-      </button>
-      <div class="az-letters-scroll">
-        <div class="az-letters-set set-1">${lettersHtml}</div>
-        <div class="az-letters-set set-2">${lettersHtml}</div>
-        <div class="az-letters-set set-3">${lettersHtml}</div>
+    <div class="az-bar-2rows" aria-label="Filtre par initiale">
+      <div class="az-row">
+        <button type="button" class="az-all-btn ${allSelected ? 'active' : 'available'}" data-letter="ALL">
+          Tous
+        </button>
+        ${row1Html}
+      </div>
+      <div class="az-row">
+        ${row2Html}
       </div>
     </div>
   `;
@@ -63,40 +68,8 @@ export function setupAZBarEvents(
   getSelectedLetter: () => string,
   onSelectLetter: (letter: string) => void
 ): void {
-  const bar = container.querySelector('.az-bar');
+  const bar = container.querySelector('.az-bar-2rows, .az-bar');
   if (!bar) return;
-
-  const scrollContainer = bar.querySelector<HTMLElement>('.az-letters-scroll');
-  if (scrollContainer) {
-    // Centrer le défilement sur le Set 2 au chargement
-    requestAnimationFrame(() => {
-      const set1 = scrollContainer.querySelector<HTMLElement>('.set-1');
-      if (set1) {
-        const setWidth = set1.offsetWidth;
-        if (setWidth > 0) {
-          scrollContainer.scrollLeft = setWidth;
-        }
-      }
-    });
-
-    // Boucle infinie continue au défilement horizontal
-    scrollContainer.addEventListener(
-      'scroll',
-      () => {
-        const set1 = scrollContainer.querySelector<HTMLElement>('.set-1');
-        if (!set1) return;
-        const setWidth = set1.offsetWidth;
-        if (setWidth <= 0) return;
-
-        if (scrollContainer.scrollLeft < setWidth * 0.1) {
-          scrollContainer.scrollLeft += setWidth;
-        } else if (scrollContainer.scrollLeft > setWidth * 1.9) {
-          scrollContainer.scrollLeft -= setWidth;
-        }
-      },
-      { passive: true }
-    );
-  }
 
   bar.addEventListener('click', (e) => {
     const target = (e.target as HTMLElement).closest<HTMLButtonElement>('.az-letter, .az-all-btn');
@@ -138,7 +111,7 @@ export function updateAZBarAvailability(
   availableLetters: Set<string>,
   selectedLetter: string
 ): void {
-  const bar = container.querySelector('.az-bar');
+  const bar = container.querySelector('.az-bar-2rows, .az-bar');
   if (!bar) return;
 
   const allBtns = bar.querySelectorAll<HTMLButtonElement>('.az-letter');

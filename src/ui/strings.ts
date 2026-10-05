@@ -2,12 +2,12 @@
  * Libellés et messages de l'interface utilisateur centralisés en français.
  */
 export const STRINGS = {
-  appName: 'Prise de Présences',
+  appName: 'Présences',
   appSubtitle: 'Application PWA hors ligne',
   
   // Navigation
   nav: {
-    pointage: 'Pointage',
+    pointage: 'Présences',
     jour: 'Aujourd\'hui',
     eleves: 'Élèves',
     historique: 'Historique',
@@ -91,7 +91,7 @@ export const STRINGS = {
   // Synchronisation & Hors ligne
   sync: {
     synced: 'Synchronisé',
-    pending: 'Modifications en attente ({count})',
+    pending: 'Modif. en att. ({count})',
     offline: 'Hors ligne',
     lastSync: 'Dernière synchronisation :',
     syncUrl: 'URL Google Apps Script',

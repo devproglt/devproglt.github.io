@@ -189,8 +189,86 @@ html, body {
 .filter-section {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.filter-row-compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.search-bar-compact {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 0 0 150px;
+  min-width: 110px;
+  max-width: 200px;
+}
+
+.search-input-compact {
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  padding: 4px 24px 4px 26px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.search-input-compact:focus {
+  border-color: var(--accent-active);
+  box-shadow: 0 0 0 2px var(--accent-active-glow);
+}
+
+.search-bar-compact .search-icon {
+  position: absolute;
+  left: 7px;
+  width: 14px;
+  height: 14px;
+  fill: var(--text-muted);
+  pointer-events: none;
+}
+
+.clear-search-btn-compact {
+  position: absolute;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  border-radius: 50%;
+}
+
+.chips-container-compact {
+  flex: 1;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.chips-container-compact .chips-scroll {
+  padding: 0;
+  gap: 4px;
+}
+
+.chips-container-compact .chip {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 9px;
+  font-size: 0.75rem;
 }
 
 .search-bar {
@@ -277,7 +355,88 @@ html, body {
   box-shadow: var(--shadow-sm);
 }
 
-/* Barre d'initiales A-Z avec bouton "Tous" fixe et défilement infini */
+/* Barre d'initiales A-Z sur 2 lignes continues */
+.az-bar-2rows {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  user-select: none;
+}
+
+.az-row {
+  display: flex;
+  gap: 3px;
+  width: 100%;
+  align-items: center;
+}
+
+.az-row .az-all-btn {
+  flex: 1.5;
+  min-width: 0;
+  height: 27px;
+  padding: 0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+}
+
+.az-row .az-all-btn.active {
+  background-color: var(--accent-active);
+  border-color: var(--accent-active);
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: var(--shadow-sm);
+}
+
+.az-row .az-all-btn.available {
+  color: var(--text-primary);
+}
+
+.az-row .az-letter {
+  flex: 1;
+  min-width: 0;
+  height: 27px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.az-row .az-letter.available {
+  color: var(--text-primary);
+}
+
+.az-row .az-letter.active {
+  background-color: var(--accent-active);
+  border-color: var(--accent-active);
+  color: #ffffff;
+  font-weight: 800;
+  box-shadow: var(--shadow-sm);
+}
+
+.az-row .az-letter.disabled {
+  opacity: 0.22;
+  pointer-events: none;
+}
+
+/* Ancienne barre A-Z (rétro-compatibilité) */
 .az-bar {
   display: flex;
   align-items: center;
@@ -287,98 +446,292 @@ html, body {
   overflow: hidden;
 }
 
-.az-all-btn {
-  flex-shrink: 0;
-  min-width: 44px;
-  height: 32px;
-  padding: 0 8px;
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  border-radius: var(--radius-sm);
+/* Cadre résumé de séance Pointage rétractable */
+.pointage-summary-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-color);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  z-index: 2;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  transition: all var(--transition-normal);
+}
+
+.pointage-summary-row {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  min-height: 40px;
+  gap: 8px;
+  cursor: pointer;
 }
 
-.az-all-btn.available {
-  color: var(--text-primary);
-}
-
-.az-all-btn.active {
-  background-color: var(--accent-active);
-  border-color: var(--accent-active);
-  color: #ffffff;
-  font-weight: 800;
-  box-shadow: var(--shadow-sm);
-}
-
-.az-letters-scroll {
+.pointage-summary-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   flex: 1;
-  display: flex;
-  gap: 3px;
-  overflow-x: auto;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  scroll-behavior: auto;
   min-width: 0;
+  overflow: hidden;
 }
-.az-letters-scroll::-webkit-scrollbar { display: none; }
 
-.az-letters-set {
+.badge-type-pill {
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.badge-type-pill.presence {
+  background: var(--accent-presence-light);
+  color: var(--accent-presence);
+}
+.badge-type-pill.course {
+  background: var(--accent-course-light);
+  color: var(--accent-course);
+}
+
+.pointage-session-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
+}
+
+.pointage-totals-group {
   display: flex;
-  gap: 3px;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  white-space: nowrap;
+  background: var(--bg-surface-hover);
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+}
+
+.pointage-totals-group .tot-badge {
+  font-weight: 800;
+  color: var(--accent-active);
+}
+.pointage-totals-group .sub-tot.g strong { color: #0284c7; }
+.pointage-totals-group .sub-tot.f strong { color: #db2777; }
+.pointage-totals-group .sub-tot.i strong { color: #10b981; }
+
+.pointage-summary-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
 }
 
-.az-letter {
-  flex-shrink: 0;
-  min-width: 30px;
-  height: 32px;
-  padding: 0 4px;
+.btn-icon-toggle {
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: var(--font-size-xs);
-  font-weight: 700;
-  border-radius: var(--radius-sm);
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast);
 }
 
-.az-letter.available {
-  color: var(--text-primary);
+.btn-icon-toggle:hover {
+  background: var(--bg-surface-hover);
 }
 
-.az-letter.active {
-  background-color: var(--accent-active);
-  border-color: var(--accent-active);
-  color: #ffffff;
-  font-weight: 800;
-  box-shadow: var(--shadow-sm);
+.chevron-icon {
+  transition: transform 200ms ease;
+}
+.chevron-icon.expanded {
+  transform: rotate(180deg);
 }
 
-.az-letter.disabled {
-  opacity: 0.25;
-  pointer-events: none;
-}
-
-/* Liste d'élèves et rangées tactiles */
-.student-list {
+.pointage-details-drawer {
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-surface-hover);
+  padding: 8px 12px;
   display: flex;
   flex-direction: column;
-  padding: 8px 16px;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.pointage-drawer-content {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
 }
 
+.pointage-drawer-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.pointage-drawer-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Liste d'élèves compacte sur une seule ligne */
+.student-list {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 16px;
+  gap: 6px;
+}
+
+.student-card-compact {
+  min-height: 38px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.student-card-compact:active {
+  transform: scale(0.985);
+}
+
+.student-card-compact.marked-present {
+  background-color: var(--accent-active-light);
+  border-color: var(--accent-active);
+  box-shadow: 0 0 0 1px var(--accent-active);
+}
+
+.student-info-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.student-name-compact {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badge-year-compact {
+  background-color: var(--bg-surface-hover);
+  border: 1px solid var(--border-color);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.72rem;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.badge-gender-compact {
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-weight: 800;
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+.badge-gender-compact.F { background-color: #fce7f3; color: #db2777; }
+.badge-gender-compact.M { background-color: #e0f2fe; color: #0284c7; }
+
+.badge-internal-compact {
+  background-color: var(--bg-surface-hover);
+  border: 1px solid var(--border-color);
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #10b981;
+  flex-shrink: 0;
+}
+
+.check-indicator-compact {
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.student-card-compact.marked-present .check-indicator-compact {
+  background-color: var(--accent-active);
+  border-color: var(--accent-active);
+  color: var(--text-inverse);
+}
+
+.add-student-card-compact {
+  border: 1.5px dashed var(--accent-active);
+  background: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--accent-active);
+  font-weight: 700;
+  font-size: 0.8rem;
+  min-height: 36px;
+  margin-top: 4px;
+}
+
+.btn-icon-subtle {
+  background: none;
+  border: 1px solid transparent;
+  padding: 2px 5px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.btn-icon-subtle:hover, .btn-icon-subtle:active {
+  color: var(--text-primary);
+  background: var(--bg-surface-hover);
+  border-color: var(--border-color);
+}
+
+.btn-xs {
+  min-height: 28px !important;
+  height: 28px;
+  padding: 0 10px !important;
+  font-size: 0.75rem !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+/* Ancienne carte d'élève (rétro-compatibilité) */
 .student-card {
   min-height: 56px;
   background-color: var(--bg-surface);

@@ -66,39 +66,40 @@ export class ElevesView {
     );
 
     this.container.innerHTML = `
-      <div style="padding: 12px 16px; position: relative; min-height: 100%;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; flex-wrap: wrap;">
-          <h2 id="eleves-title">${STRINGS.nav.eleves} (${this.students.length})</h2>
-          <div style="display: flex; gap: 8px;">
-            <label class="btn btn-secondary" style="min-height: 38px; padding: 0 10px; font-size: 0.8rem; cursor: pointer;">
+      <div style="padding: 8px 14px; position: relative; min-height: 100%; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <h2 id="eleves-title" style="font-size: 1.15rem; font-weight: 800;">${STRINGS.nav.eleves} (${this.students.length})</h2>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <label class="btn btn-secondary btn-xs" style="cursor: pointer;">
               📂 Importer Excel
               <input type="file" id="eleves-import-file" accept=".xlsx, .xls, .csv" style="display: none;" />
             </label>
-            <button class="btn btn-primary" id="eleves-add-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
+            <button class="btn btn-primary btn-xs" id="eleves-add-btn">
               + ${STRINGS.actions.add}
             </button>
           </div>
         </div>
 
         <div class="filter-section">
-          <div class="search-bar">
-            <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 14z"/></svg>
-            <input type="search" id="eleves-search" class="search-input" placeholder="${STRINGS.header.searchPlaceholder}" value="${this.escapeHtml(this.searchQuery)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
-            <button type="button" class="clear-search-btn" id="eleves-clear-search" style="display: ${this.searchQuery ? 'flex' : 'none'};">✕</button>
-          </div>
+          <div class="filter-row-compact">
+            <div class="search-bar-compact">
+              <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 14z"/></svg>
+              <input type="search" id="eleves-search" class="search-input-compact" placeholder="Recherche..." value="${this.escapeHtml(this.searchQuery)}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+              <button type="button" class="clear-search-btn-compact" id="eleves-clear-search" style="display: ${this.searchQuery ? 'flex' : 'none'};">✕</button>
+            </div>
 
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-top: 4px; gap: 8px;">
-            <div id="eleves-year-chips" style="flex: 1; overflow: hidden;">${renderYearChips(this.yearsList, this.selectedYears)}</div>
-            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.8rem; cursor: pointer; white-space: nowrap;">
+            <div id="eleves-year-chips" class="chips-container-compact">${renderYearChips(this.yearsList, this.selectedYears)}</div>
+
+            <label style="display: flex; align-items: center; gap: 4px; font-size: 0.75rem; cursor: pointer; white-space: nowrap; margin-left: 2px;">
               <input type="checkbox" id="eleves-show-inactive" ${this.showInactive ? 'checked' : ''} />
-              ${STRINGS.header.includeInactive}
+              <span>Inactifs</span>
             </label>
           </div>
 
           <div id="eleves-az-bar">${renderAZBar(availableLetters, this.selectedLetter)}</div>
         </div>
 
-        <div class="student-list" id="eleves-student-list" style="margin-top: 12px; padding: 0;">
+        <div class="student-list" id="eleves-student-list" style="padding: 0;">
           ${this.renderStudentListHtml()}
         </div>
       </div>
@@ -112,7 +113,7 @@ export class ElevesView {
   private renderStudentListHtml(): string {
     if (this.students.length === 0) {
       return `
-        <div style="text-align: center; padding: 32px; color: var(--text-muted);">
+        <div style="text-align: center; padding: 24px; color: var(--text-muted); font-size: 0.85rem;">
           Aucun élève trouvé.
         </div>
       `;
@@ -121,20 +122,17 @@ export class ElevesView {
     return this.students
       .map(
         (student) => `
-      <div class="student-card" data-student-id="${student.id}">
-        <div class="student-info">
-          <div class="student-name" style="${!student.active ? 'text-decoration: line-through; opacity: 0.6;' : ''}">
+      <div class="student-card-compact" data-student-id="${student.id}">
+        <div class="student-info-inline">
+          <span class="student-name-compact" style="${!student.active ? 'text-decoration: line-through; opacity: 0.6;' : ''}">
             ${this.escapeHtml(student.firstName)} ${this.escapeHtml(student.lastName)}
-            ${!student.active ? ' <span style="font-size: 0.75rem; color: var(--color-danger);">(Inactif)</span>' : ''}
-          </div>
-          <div class="student-meta">
-            <span class="badge-year">${this.escapeHtml(student.year)}</span>
-            <span class="badge-gender ${student.gender}">${student.gender === 'F' ? 'Fille' : 'Garçon'}</span>
-            ${student.isInternal ? `<span style="background: var(--bg-surface-hover); padding: 2px 6px; border-radius: var(--radius-sm); font-size: 0.7rem; font-weight: 600;">Interne</span>` : ''}
-            ${student.notes ? `<span style="color: var(--text-muted); font-size: 0.75rem;">${this.escapeHtml(student.notes)}</span>` : ''}
-          </div>
+            ${!student.active ? ' <span style="font-size: 0.7rem; color: var(--color-danger);">(Inactif)</span>' : ''}
+          </span>
+          <span class="badge-year-compact">${this.escapeHtml(student.year)}</span>
+          <span class="badge-gender-compact ${student.gender}">${student.gender === 'F' ? 'F' : 'G'}</span>
+          ${student.isInternal ? `<span class="badge-internal-compact">Int.</span>` : ''}
         </div>
-        <button class="btn btn-secondary eleves-edit-btn" data-student-id="${student.id}" style="min-height: 38px; padding: 0 10px; font-size: 0.8rem;">
+        <button class="btn btn-secondary btn-xs eleves-edit-btn" data-student-id="${student.id}" style="min-height: 28px; padding: 0 8px; font-size: 0.75rem;">
           ${STRINGS.actions.edit}
         </button>
       </div>
@@ -197,7 +195,7 @@ export class ElevesView {
       });
     });
 
-    const cards = this.container.querySelectorAll<HTMLElement>('.student-card');
+    const cards = this.container.querySelectorAll<HTMLElement>('.student-card-compact');
     cards.forEach((card) => {
       card.addEventListener('click', () => {
         const id = card.dataset.studentId;
@@ -293,6 +291,7 @@ export class ElevesView {
     if (!modalContainer) return;
 
     let selectedGender: 'F' | 'M' = student ? student.gender : 'F';
+    let isCustomClassMode = false;
 
     modalContainer.innerHTML = `
       <div class="modal-overlay" id="eleves-modal-overlay">
@@ -301,10 +300,10 @@ export class ElevesView {
             <h3 style="font-size: var(--font-size-lg); font-weight: 700;">
               ${isEdit ? STRINGS.actions.edit : STRINGS.actions.addStudent}
             </h3>
-            <button type="button" class="btn btn-secondary" id="modal-close-btn" style="min-height: 36px; padding: 0 10px;">✕</button>
+            <button type="button" class="btn btn-secondary btn-xs" id="modal-close-btn" style="min-height: 32px; padding: 0 10px;">✕</button>
           </div>
 
-          <form id="student-form" style="display: flex; flex-direction: column; gap: 14px;">
+          <form id="student-form" style="display: flex; flex-direction: column; gap: 12px;">
             <div id="duplicate-warning-banner" class="past-date-banner" style="display: none;">
               ${STRINGS.student.duplicateWarning}
             </div>
@@ -313,14 +312,14 @@ export class ElevesView {
               <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
                 ${STRINGS.student.firstName} *
               </label>
-              <input type="text" id="form-first-name" class="search-input" value="${student ? this.escapeHtml(student.firstName) : ''}" required />
+              <input type="text" id="form-first-name" class="search-input" value="${student ? this.escapeHtml(student.firstName) : ''}" placeholder="ex: Lucas" required />
             </div>
 
             <div>
               <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
                 ${STRINGS.student.lastName} *
               </label>
-              <input type="text" id="form-last-name" class="search-input" value="${student ? this.escapeHtml(student.lastName) : ''}" required />
+              <input type="text" id="form-last-name" class="search-input" value="${student ? this.escapeHtml(student.lastName) : ''}" placeholder="ex: Dubois" required />
             </div>
 
             <div>
@@ -339,9 +338,14 @@ export class ElevesView {
             </div>
 
             <div>
-              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
-                ${STRINGS.student.year} *
-              </label>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label style="font-size: var(--font-size-xs); font-weight: 600;">
+                  ${STRINGS.student.year} *
+                </label>
+                <button type="button" id="eleves-toggle-new-class-btn" style="background: none; border: none; font-size: 0.75rem; color: var(--accent-active); font-weight: 700; cursor: pointer; text-decoration: underline;">
+                  + Créer une nouvelle classe
+                </button>
+              </div>
               <select id="form-year-select" class="search-input" style="appearance: auto;">
                 ${this.yearsList
                   .map(
@@ -350,7 +354,11 @@ export class ElevesView {
                 `
                   )
                   .join('')}
+                <option value="__new__">+ Autre classe...</option>
               </select>
+              <div id="eleves-custom-class-container" style="display: none; margin-top: 6px;">
+                <input type="text" id="eleves-custom-class-input" class="search-input" placeholder="Nom de la nouvelle classe (ex: 3C, 6G, Term 2...)" />
+              </div>
             </div>
 
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -364,7 +372,7 @@ export class ElevesView {
               <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
                 ${STRINGS.student.notes}
               </label>
-              <textarea id="form-notes" class="search-input" style="min-height: 70px; resize: vertical;">${student ? this.escapeHtml(student.notes) : ''}</textarea>
+              <textarea id="form-notes" class="search-input" style="min-height: 60px; resize: vertical;">${student ? this.escapeHtml(student.notes) : ''}</textarea>
             </div>
 
             ${isEdit ? `
@@ -376,16 +384,16 @@ export class ElevesView {
               </div>
             ` : ''}
 
-            <div style="display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap;">
               ${isEdit ? `
-                <button type="button" class="btn btn-danger" id="form-delete-student-btn" style="flex: 1; min-height: 42px;">
+                <button type="button" class="btn btn-danger btn-xs" id="form-delete-student-btn" style="flex: 1; min-height: 40px;">
                   Supprimer
                 </button>
               ` : ''}
-              <button type="button" class="btn btn-secondary" id="form-cancel-btn" style="flex: 1; min-height: 42px;">
+              <button type="button" class="btn btn-secondary" id="form-cancel-btn" style="flex: 1; min-height: 40px;">
                 ${STRINGS.actions.cancel}
               </button>
-              <button type="submit" class="btn btn-primary" style="flex: 1.5; min-height: 42px;">
+              <button type="submit" class="btn btn-primary" style="flex: 1.4; min-height: 40px; font-weight: 700;">
                 ${STRINGS.actions.save}
               </button>
             </div>
@@ -434,13 +442,39 @@ export class ElevesView {
     const firstNameInput = modalContainer.querySelector<HTMLInputElement>('#form-first-name');
     const lastNameInput = modalContainer.querySelector<HTMLInputElement>('#form-last-name');
     const yearSelect = modalContainer.querySelector<HTMLSelectElement>('#form-year-select');
+    const customClassContainer = modalContainer.querySelector<HTMLElement>('#eleves-custom-class-container');
+    const customClassInput = modalContainer.querySelector<HTMLInputElement>('#eleves-custom-class-input');
+    const toggleNewClassBtn = modalContainer.querySelector('#eleves-toggle-new-class-btn');
     const warningBanner = modalContainer.querySelector<HTMLElement>('#duplicate-warning-banner');
+
+    const showCustomClassField = () => {
+      isCustomClassMode = true;
+      if (customClassContainer) customClassContainer.style.display = 'block';
+      if (yearSelect) yearSelect.value = '__new__';
+      if (customClassInput) customClassInput.focus();
+    };
+
+    if (toggleNewClassBtn) toggleNewClassBtn.addEventListener('click', showCustomClassField);
+
+    if (yearSelect) {
+      yearSelect.addEventListener('change', () => {
+        if (yearSelect.value === '__new__') {
+          showCustomClassField();
+        } else {
+          isCustomClassMode = false;
+          if (customClassContainer) customClassContainer.style.display = 'none';
+        }
+      });
+    }
 
     const checkDuplicates = async () => {
       if (!firstNameInput || !lastNameInput || !yearSelect || !warningBanner) return;
       const fn = firstNameInput.value;
       const ln = lastNameInput.value;
-      const yr = yearSelect.value;
+      let yr = yearSelect.value;
+      if (yr === '__new__' && customClassInput?.value.trim()) {
+        yr = customClassInput.value.trim();
+      }
       if (fn.trim() && ln.trim()) {
         const isDup = await checkProbableDuplicate(fn, ln, yr, student?.id);
         warningBanner.style.display = isDup ? 'block' : 'none';
@@ -450,6 +484,7 @@ export class ElevesView {
     if (firstNameInput) firstNameInput.addEventListener('input', checkDuplicates);
     if (lastNameInput) lastNameInput.addEventListener('input', checkDuplicates);
     if (yearSelect) yearSelect.addEventListener('change', checkDuplicates);
+    if (customClassInput) customClassInput.addEventListener('input', checkDuplicates);
 
     const form = modalContainer.querySelector<HTMLFormElement>('#student-form');
     if (form) {
@@ -459,19 +494,25 @@ export class ElevesView {
 
         const firstName = firstNameInput.value.trim();
         const lastName = lastNameInput.value.trim();
-        const year = yearSelect.value.trim();
+        let year = yearSelect.value.trim();
+        if (year === '__new__' || isCustomClassMode) {
+          const typed = customClassInput?.value.trim();
+          if (typed) year = typed;
+        }
+
         const isInternal = modalContainer.querySelector<HTMLInputElement>('#form-internal-checkbox')?.checked ?? false;
         const notes = (modalContainer.querySelector<HTMLTextAreaElement>('#form-notes')?.value || '').trim();
         const active = isEdit
           ? modalContainer.querySelector<HTMLInputElement>('#form-active-checkbox')?.checked ?? true
           : true;
 
-        if (!firstName || !lastName || !year) {
+        if (!firstName || !lastName || !year || year === '__new__') {
           showToast('Veuillez remplir les champs obligatoires.');
           return;
         }
 
         await addYearIfMissing(year);
+        this.yearsList = await getYearsList();
 
         if (isEdit && student) {
           await updateStudent({

@@ -3,7 +3,7 @@ import { renderSegmentedToggle, setupSegmentedToggleEvents } from '../components
 import { showToast } from '../components/toast';
 import { db } from '../../db/schema';
 import { getAttendancesByEvent, getAttendancesByDateAndType, toggleAttendance } from '../../db/attendances';
-import { getEventsByDateAndType, getEventById, deleteEvent, type EventRecord } from '../../db/events';
+import { getEventsByDateAndType, getEventById, deleteEvent, updateEvent, createEvent, type EventRecord } from '../../db/events';
 import { getAllStudents, type StudentRecord } from '../../db/students';
 import { calculateDaySummary, extractYearLevel } from '../../domain/stats';
 import { formatTimeBrussels, formatReadableDate } from '../../domain/dates';
@@ -106,7 +106,7 @@ export class JourView {
     const eventTitle = this.currentEvent ? this.currentEvent.title : (this.activeTab === 'presence' ? STRINGS.types.presence : STRINGS.types.course);
 
     this.container.innerHTML = `
-      <div style="padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="padding: 12px 16px; display: flex; flex-direction: column; gap: 12px;">
         <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap;">
           <div>
             <h2 style="font-size: var(--font-size-lg); font-weight: 800;">${this.escapeHtml(eventTitle)}</h2>
@@ -119,15 +119,18 @@ export class JourView {
               ${formatReadableDate(this.options.date)}
             </div>
           </div>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-            <button class="btn btn-primary" id="jour-resume-pointage-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem; font-weight: 700;">
-              Pointer / Modifier
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button class="btn btn-primary btn-xs" id="jour-resume-pointage-btn" style="min-height: 34px; padding: 0 12px; font-weight: 700;">
+              Pointer / Inscriptions
             </button>
-            <button class="btn btn-secondary" id="jour-copy-summary-btn" style="min-height: 38px; padding: 0 12px; font-size: 0.8rem;">
+            <button class="btn btn-secondary btn-xs" id="jour-edit-info-btn" style="min-height: 34px; padding: 0 10px;">
+              ✏️ Modifier infos
+            </button>
+            <button class="btn btn-secondary btn-xs" id="jour-copy-summary-btn" style="min-height: 34px; padding: 0 10px;">
               ${STRINGS.actions.copySummary}
             </button>
-            <button class="btn btn-danger" id="jour-delete-session-btn" style="min-height: 38px; padding: 0 10px; font-size: 0.8rem;">
-              Supprimer l'entrée
+            <button class="btn btn-danger btn-xs" id="jour-delete-session-btn" style="min-height: 34px; padding: 0 10px;">
+              Supprimer
             </button>
           </div>
         </div>
@@ -135,7 +138,7 @@ export class JourView {
         <div>${tabsToggleHtml}</div>
 
         <!-- Carte de résumé -->
-        <div style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: var(--shadow-sm);">
+        <div style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: var(--shadow-sm);">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: var(--font-size-base); font-weight: 700; color: var(--text-primary);">
               Résumé de la séance
@@ -152,7 +155,7 @@ export class JourView {
           </div>
 
           ${Object.keys(summary.byYear).length > 0 ? `
-            <table class="data-table" style="margin-top: 8px;">
+            <table class="data-table" style="margin-top: 6px;">
               <thead>
                 <tr>
                   <th>Année</th>
@@ -171,31 +174,30 @@ export class JourView {
 
         <!-- Liste des élèves présent(e)s -->
         <div>
-          <h3 style="margin-bottom: 8px; font-size: var(--font-size-base);">${STRINGS.nav.jour} (${presentList.length})</h3>
-          <p style="font-size: var(--font-size-xs); color: var(--text-muted); margin-bottom: 8px;">${STRINGS.stats.longPressHint}</p>
+          <h3 style="margin-bottom: 6px; font-size: var(--font-size-base);">${STRINGS.nav.jour} (${presentList.length})</h3>
+          <p style="font-size: var(--font-size-xs); color: var(--text-muted); margin-bottom: 6px;">${STRINGS.stats.longPressHint}</p>
 
           ${presentList.length === 0 ? `
-            <div style="text-align: center; padding: 24px; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <div style="text-align: center; padding: 20px; color: var(--text-muted); background: var(--bg-surface); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
               ${STRINGS.stats.noAttendanceToday}
             </div>
           ` : `
-            <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 6px;">
               ${presentList
                 .map(
                   (item) => `
-                <div class="student-card" data-student-id="${item.student.id}" data-event-id="${item.attendance.eventId}" data-attendance-id="${item.attendance.id}">
-                  <div class="student-info">
-                    <div class="student-name">${this.escapeHtml(item.student.firstName)} ${this.escapeHtml(item.student.lastName)}</div>
-                    <div class="student-meta">
-                      <span class="badge-year">${this.escapeHtml(extractYearLevel(item.student.year))}</span>
-                      <span class="badge-gender ${item.student.gender}">${item.student.gender === 'F' ? 'Fille' : 'Garçon'}</span>
-                    </div>
+                <div class="student-card-compact" data-student-id="${item.student.id}" data-event-id="${item.attendance.eventId}" data-attendance-id="${item.attendance.id}">
+                  <div class="student-info-inline">
+                    <span class="student-name-compact">${this.escapeHtml(item.student.firstName)} ${this.escapeHtml(item.student.lastName)}</span>
+                    <span class="badge-year-compact">${this.escapeHtml(extractYearLevel(item.student.year))}</span>
+                    <span class="badge-gender-compact ${item.student.gender}">${item.student.gender === 'F' ? 'F' : 'G'}</span>
+                    ${item.student.isInternal ? `<span class="badge-internal-compact">Int.</span>` : ''}
                   </div>
-                  <div style="display: flex; align-items: center; gap: 10px;">
+                  <div style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: var(--font-size-xs); color: var(--text-muted); font-weight: 500;">
                       ${formatTimeBrussels(item.attendance.markedAt)}
                     </span>
-                    <button class="btn btn-danger jour-cancel-btn" style="min-height: 36px; padding: 0 10px; font-size: 0.75rem;" title="Annuler ce pointage">
+                    <button class="btn btn-danger btn-xs jour-cancel-btn" style="min-height: 28px; padding: 0 8px; font-size: 0.72rem;" title="Annuler ce pointage">
                       Annuler
                     </button>
                   </div>
@@ -207,9 +209,161 @@ export class JourView {
           `}
         </div>
       </div>
+
+      <div id="jour-modal-container"></div>
     `;
 
     this.attachEvents(summary, eventTitle, sortedForSummary);
+  }
+
+  private openEditSessionModal(eventTitle: string): void {
+    const modalContainer = this.container.querySelector('#jour-modal-container');
+    if (!modalContainer) return;
+
+    let selectedType: 'presence' | 'course' = this.activeTab;
+
+    modalContainer.innerHTML = `
+      <div class="modal-overlay" id="jour-edit-modal-overlay">
+        <div class="modal-content">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <h3 style="font-size: var(--font-size-lg); font-weight: 700;">
+              Modifier les informations de la séance
+            </h3>
+            <button type="button" class="btn btn-secondary btn-xs" id="jour-edit-modal-close-btn" style="min-height: 32px; padding: 0 10px;">✕</button>
+          </div>
+
+          <form id="jour-edit-session-form" style="display: flex; flex-direction: column; gap: 12px;">
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                Titre de la séance *
+              </label>
+              <input type="text" id="jour-edit-title" class="search-input" value="${this.escapeHtml(this.currentEvent?.title || eventTitle)}" required />
+            </div>
+
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                Date de la séance *
+              </label>
+              <input type="date" id="jour-edit-date" class="search-input" value="${this.options.date}" style="min-height: 38px; padding: 4px 8px;" required />
+            </div>
+
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                Type de séance
+              </label>
+              <div id="jour-edit-type-toggle">
+                ${renderSegmentedToggle(
+                  [
+                    { value: 'presence', label: STRINGS.types.presence },
+                    { value: 'course', label: STRINGS.types.course },
+                  ],
+                  selectedType
+                )}
+              </div>
+            </div>
+
+            <div>
+              <label style="font-size: var(--font-size-xs); font-weight: 600; display: block; margin-bottom: 4px;">
+                Notes / Remarques / Thème (Détails supplémentaires)
+              </label>
+              <textarea id="jour-edit-desc" class="search-input" style="min-height: 70px; resize: vertical;">${this.escapeHtml(this.currentEvent?.description || '')}</textarea>
+            </div>
+
+            <div style="display: flex; gap: 8px; margin-top: 8px;">
+              <button type="button" class="btn btn-secondary" id="jour-edit-cancel-btn" style="flex: 1; min-height: 40px;">
+                ${STRINGS.actions.cancel}
+              </button>
+              <button type="submit" class="btn btn-primary" style="flex: 1.5; min-height: 40px; font-weight: 700;">
+                ${STRINGS.actions.save}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    `;
+
+    const closeOverlay = () => {
+      modalContainer.innerHTML = '';
+    };
+
+    const overlay = modalContainer.querySelector('#jour-edit-modal-overlay');
+    if (overlay) {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) closeOverlay();
+      });
+    }
+
+    const closeBtn = modalContainer.querySelector('#jour-edit-modal-close-btn');
+    if (closeBtn) closeBtn.addEventListener('click', closeOverlay);
+
+    const cancelBtn = modalContainer.querySelector('#jour-edit-cancel-btn');
+    if (cancelBtn) cancelBtn.addEventListener('click', closeOverlay);
+
+    const typeToggleContainer = modalContainer.querySelector('#jour-edit-type-toggle') as HTMLElement;
+    if (typeToggleContainer) {
+      setupSegmentedToggleEvents(typeToggleContainer, (val) => {
+        selectedType = val as 'presence' | 'course';
+      });
+    }
+
+    const form = modalContainer.querySelector<HTMLFormElement>('#jour-edit-session-form');
+    if (form) {
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const titleInput = modalContainer.querySelector<HTMLInputElement>('#jour-edit-title');
+        const dateInput = modalContainer.querySelector<HTMLInputElement>('#jour-edit-date');
+        const descInput = modalContainer.querySelector<HTMLTextAreaElement>('#jour-edit-desc');
+
+        const newTitle = titleInput?.value.trim() || 'Séance';
+        const newDate = dateInput?.value.trim() || this.options.date;
+        const newDesc = descInput?.value.trim() || '';
+
+        const origEventId = this.currentEvent?.id;
+        const origDate = this.options.date;
+        const origType = this.activeTab;
+
+        if (origEventId) {
+          await updateEvent(origEventId, {
+            title: newTitle,
+            date: newDate,
+            type: selectedType,
+            description: newDesc,
+          });
+
+          if (newDate !== origDate || selectedType !== origType) {
+            await db.attendances.where('eventId').equals(origEventId).modify({
+              date: newDate,
+              type: selectedType,
+              dirty: 1,
+              updatedAt: Date.now(),
+            });
+          }
+        } else {
+          // Créer l'événement dans la base de données
+          const newEvent = await createEvent({
+            date: newDate,
+            type: selectedType,
+            title: newTitle,
+            description: newDesc,
+          });
+
+          await db.attendances.where('[date+type]').equals([origDate, origType]).modify({
+            eventId: newEvent.id,
+            date: newDate,
+            type: selectedType,
+            dirty: 1,
+            updatedAt: Date.now(),
+          });
+        }
+
+        showToast('Séance mise à jour !');
+        this.options.date = newDate;
+        this.activeTab = selectedType;
+        closeOverlay();
+        await this.loadDataAndRender();
+        this.options.onRefreshNeeded();
+      });
+    }
   }
 
   private attachEvents(
@@ -223,6 +377,13 @@ export class JourView {
         if (this.options.onResumePointage) {
           this.options.onResumePointage(this.currentEvent?.id, this.options.date, this.activeTab);
         }
+      });
+    }
+
+    const editInfoBtn = this.container.querySelector('#jour-edit-info-btn');
+    if (editInfoBtn) {
+      editInfoBtn.addEventListener('click', () => {
+        this.openEditSessionModal(eventTitle);
       });
     }
 
@@ -274,9 +435,8 @@ export class JourView {
       });
     }
 
-
     // Appui pour ouvrir la fiche ou annuler
-    const cards = this.container.querySelectorAll<HTMLElement>('.student-card');
+    const cards = this.container.querySelectorAll<HTMLElement>('.student-card-compact');
     cards.forEach((card) => {
       const studentId = card.dataset.studentId;
       const eventId = card.dataset.eventId || (this.currentEvent ? this.currentEvent.id : `${this.options.date}_${this.activeTab}`);
