@@ -2,6 +2,12 @@ import { getMeta, setMeta, getDeviceId } from '../db/meta';
 import { getDirtyStudents, markStudentsSynced, deduplicateStudents } from '../db/students';
 import { getDirtyEvents, markEventsSynced, deduplicateEvents } from '../db/events';
 import { getDirtyAttendances, markAttendancesSynced, normalizeAndRepairAttendances } from '../db/attendances';
+import {
+  getDirtyTextileTypes,
+  markTextileTypesSynced,
+  getDirtyTextileDistributions,
+  markTextileDistributionsSynced,
+} from '../db/textiles';
 import { formatDateBrussels } from '../domain/dates';
 import { db } from '../db/schema';
 import { pushToServer, pullFromServer } from './client';
@@ -69,7 +75,9 @@ export class SyncEngine {
     const dirtyS = await getDirtyStudents();
     const dirtyE = await getDirtyEvents();
     const dirtyA = await getDirtyAttendances();
-    return dirtyS.length + dirtyE.length + dirtyA.length;
+    const dirtyTT = await getDirtyTextileTypes();
+    const dirtyTD = await getDirtyTextileDistributions();
+    return dirtyS.length + dirtyE.length + dirtyA.length + dirtyTT.length + dirtyTD.length;
   }
 
   public async notifyListeners(): Promise<void> {
@@ -113,23 +121,46 @@ export class SyncEngine {
       const dirtyStudents = await getDirtyStudents();
       const dirtyEvents = await getDirtyEvents();
       const dirtyAttendances = await getDirtyAttendances();
+      const dirtyTextileTypes = await getDirtyTextileTypes();
+      const dirtyTextileDistributions = await getDirtyTextileDistributions();
 
-      if (dirtyStudents.length > 0 || dirtyEvents.length > 0 || dirtyAttendances.length > 0) {
+      if (
+        dirtyStudents.length > 0 ||
+        dirtyEvents.length > 0 ||
+        dirtyAttendances.length > 0 ||
+        dirtyTextileTypes.length > 0 ||
+        dirtyTextileDistributions.length > 0
+      ) {
         const batchStudents = dirtyStudents.slice(0, 500);
         const batchEvents = dirtyEvents.slice(0, 500);
         const batchAttendances = dirtyAttendances.slice(0, 500);
+        const batchTextileTypes = dirtyTextileTypes.slice(0, 500);
+        const batchTextileDistributions = dirtyTextileDistributions.slice(0, 500);
 
-        const pushRes = await pushToServer(syncUrl, syncToken, deviceId, batchStudents, batchEvents, batchAttendances);
+        const pushRes = await pushToServer(
+          syncUrl,
+          syncToken,
+          deviceId,
+          batchStudents,
+          batchEvents,
+          batchAttendances,
+          batchTextileTypes,
+          batchTextileDistributions
+        );
 
         if (pushRes.accepted) {
           const acceptedIds = new Set(pushRes.accepted);
           const acceptedStudents = batchStudents.filter((s) => acceptedIds.has(s.id)).map((s) => s.id);
           const acceptedEvents = batchEvents.filter((e) => acceptedIds.has(e.id)).map((e) => e.id);
           const acceptedAttendances = batchAttendances.filter((a) => acceptedIds.has(a.id)).map((a) => a.id);
+          const acceptedTextileTypes = batchTextileTypes.filter((t) => acceptedIds.has(t.id)).map((t) => t.id);
+          const acceptedTextileDistributions = batchTextileDistributions.filter((d) => acceptedIds.has(d.id)).map((d) => d.id);
 
           await markStudentsSynced(acceptedStudents);
           await markEventsSynced(acceptedEvents);
           await markAttendancesSynced(acceptedAttendances);
+          await markTextileTypesSynced(acceptedTextileTypes);
+          await markTextileDistributionsSynced(acceptedTextileDistributions);
         }
 
         if (pushRes.rejected) {
@@ -137,10 +168,14 @@ export class SyncEngine {
           const rejectedStudents = batchStudents.filter((s) => rejectedIds.has(s.id)).map((s) => s.id);
           const rejectedEvents = batchEvents.filter((e) => rejectedIds.has(e.id)).map((e) => e.id);
           const rejectedAttendances = batchAttendances.filter((a) => rejectedIds.has(a.id)).map((a) => a.id);
+          const rejectedTextileTypes = batchTextileTypes.filter((t) => rejectedIds.has(t.id)).map((t) => t.id);
+          const rejectedTextileDistributions = batchTextileDistributions.filter((d) => rejectedIds.has(d.id)).map((d) => d.id);
 
           await markStudentsSynced(rejectedStudents);
           await markEventsSynced(rejectedEvents);
           await markAttendancesSynced(rejectedAttendances);
+          await markTextileTypesSynced(rejectedTextileTypes);
+          await markTextileDistributionsSynced(rejectedTextileDistributions);
         }
       }
 
@@ -148,8 +183,8 @@ export class SyncEngine {
       const cursor = options.forceFull ? 0 : await getMeta<number>('lastPullCursor', 0);
       const pullRes = await pullFromServer(syncUrl, syncToken, cursor);
 
-      if (pullRes.students || pullRes.events || pullRes.attendances) {
-        await db.transaction('rw', [db.students, db.events, db.attendances, db.meta], async () => {
+      if (pullRes.students || pullRes.events || pullRes.attendances || pullRes.textileTypes || pullRes.textileDistributions) {
+        await db.transaction('rw', [db.students, db.events, db.attendances, db.textileTypes, db.textileDistributions, db.meta], async () => {
           if (options.forceFull) {
             if (pullRes.students && pullRes.students.length > 0) {
               await db.students.clear();
@@ -159,6 +194,40 @@ export class SyncEngine {
             }
             if (pullRes.attendances) {
               await db.attendances.clear();
+            }
+            if (pullRes.textileTypes) {
+              await db.textileTypes.clear();
+            }
+            if (pullRes.textileDistributions) {
+              await db.textileDistributions.clear();
+            }
+          }
+
+          // Fusion des types de textiles
+          if (pullRes.textileTypes) {
+            totalPulled += pullRes.textileTypes.length;
+            for (const incomingTT of pullRes.textileTypes) {
+              const local = await db.textileTypes.get(incomingTT.id);
+              if (!local || incomingTT.updatedAt >= local.updatedAt || options.forceFull) {
+                await db.textileTypes.put({
+                  ...incomingTT,
+                  dirty: 0,
+                });
+              }
+            }
+          }
+
+          // Fusion des distributions textiles
+          if (pullRes.textileDistributions) {
+            totalPulled += pullRes.textileDistributions.length;
+            for (const incomingTD of pullRes.textileDistributions) {
+              const local = await db.textileDistributions.get(incomingTD.id);
+              if (!local || incomingTD.updatedAt >= local.updatedAt || options.forceFull) {
+                await db.textileDistributions.put({
+                  ...incomingTD,
+                  dirty: 0,
+                });
+              }
             }
           }
 

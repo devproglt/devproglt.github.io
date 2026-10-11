@@ -7,6 +7,12 @@ import { downloadImportTemplate } from '../../io/import';
 import { getAllStudents, clearAllStudentsAndData, deduplicateStudents } from '../../db/students';
 import { getAllAttendances, clearAllAttendances, normalizeAndRepairAttendances } from '../../db/attendances';
 import { deduplicateEvents } from '../../db/events';
+import {
+  getTextileTypes,
+  createTextileType,
+  updateTextileType,
+  deleteTextileType,
+} from '../../db/textiles';
 import { db } from '../../db/schema';
 import { getTodayBrussels } from '../../domain/dates';
 
@@ -34,6 +40,7 @@ export class ParametresView {
     const deviceName = await getDeviceId();
     const lastSyncAt = await getMeta<number | null>('lastSyncAt', null);
     const allowMultipleSessions = await getAllowMultipleSessionsPerDay();
+    const textileTypes = await getTextileTypes();
 
     const engine = SyncEngine.getInstance();
     const pendingCount = await engine.getPendingCount();
@@ -55,6 +62,36 @@ export class ParametresView {
           <span style="font-size: var(--font-size-xs); color: var(--text-muted); margin-top: -4px;">
             Si désactivé (recommandé), un seul entraînement et une seule course peuvent exister par date pour éviter les doublons accidentels.
           </span>
+        </section>
+
+        <!-- Gestion des Textiles & Équipements -->
+        <section style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 16px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="font-size: var(--font-size-base); font-weight: 700;">👕 ${STRINGS.textiles.title}</h3>
+            <span style="font-size: var(--font-size-xs); color: var(--text-muted);">${textileTypes.length} configuré(s)</span>
+          </div>
+
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="param-new-textile-name" class="search-input" placeholder="ex: T-shirt, Veste, Short..." style="flex: 1;" />
+            <button class="btn btn-primary btn-xs" id="param-add-textile-btn" style="min-height: 38px; padding: 0 14px; font-weight: 700;">
+              + Ajouter
+            </button>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 6px; margin-top: 4px;">
+            ${textileTypes.length === 0 ? '<p style="font-size: 0.8rem; color: var(--text-muted);">Aucun textile configuré (par défaut zéro).</p>' : ''}
+            ${textileTypes.map((t) => `
+              <div class="textile-card-item" data-type-id="${t.id}" style="margin-bottom: 0;">
+                <input type="text" class="search-input-compact param-textile-name-input" value="${this.escapeHtml(t.name)}" style="flex: 1;" />
+                <button type="button" class="btn btn-primary btn-xs param-save-textile-btn" data-type-id="${t.id}" style="min-height: 32px; padding: 0 8px;">
+                  Sauver
+                </button>
+                <button type="button" class="btn btn-danger btn-xs param-delete-textile-btn" data-type-id="${t.id}" style="min-height: 32px; padding: 0 8px;">
+                  🗑️
+                </button>
+              </div>
+            `).join('')}
+          </div>
         </section>
 
         <!-- Synchronisation Google Sheets -->
@@ -176,6 +213,64 @@ export class ParametresView {
   }
 
   private attachEvents(): void {
+    const allowMultipleCheckbox = this.container.querySelector<HTMLInputElement>('#param-allow-multiple-sessions');
+    if (allowMultipleCheckbox) {
+      allowMultipleCheckbox.addEventListener('change', async () => {
+        await setAllowMultipleSessionsPerDay(allowMultipleCheckbox.checked);
+        showToast(allowMultipleCheckbox.checked ? 'Séances multiples activées.' : 'Séance unique par jour activée.');
+        this.options.onRefreshNeeded();
+      });
+    }
+
+    // Gestion des textiles
+    const addTextileBtn = this.container.querySelector('#param-add-textile-btn');
+    const newTextileInput = this.container.querySelector<HTMLInputElement>('#param-new-textile-name');
+    if (addTextileBtn && newTextileInput) {
+      const handleAddTextile = async () => {
+        const name = newTextileInput.value.trim();
+        if (!name) return;
+        await createTextileType(name);
+        SyncEngine.getInstance().scheduleDebouncedSync();
+        showToast(`Textile « ${name} » ajouté !`);
+        newTextileInput.value = '';
+        await this.loadDataAndRender();
+        this.options.onRefreshNeeded();
+      };
+      addTextileBtn.addEventListener('click', handleAddTextile);
+      newTextileInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') handleAddTextile();
+      });
+    }
+
+    const saveTextileBtns = this.container.querySelectorAll<HTMLButtonElement>('.param-save-textile-btn');
+    saveTextileBtns.forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const typeId = btn.dataset.typeId;
+        const row = this.container.querySelector(`.textile-card-item[data-type-id="${typeId}"]`);
+        const input = row?.querySelector<HTMLInputElement>('.param-textile-name-input');
+        const newName = input?.value.trim();
+        if (typeId && newName) {
+          await updateTextileType(typeId, newName);
+          SyncEngine.getInstance().scheduleDebouncedSync();
+          showToast('Textile renommé.');
+        }
+      });
+    });
+
+    const deleteTextileBtns = this.container.querySelectorAll<HTMLButtonElement>('.param-delete-textile-btn');
+    deleteTextileBtns.forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const typeId = btn.dataset.typeId;
+        if (typeId && confirm(STRINGS.textiles.confirmDeleteTextile)) {
+          await deleteTextileType(typeId);
+          SyncEngine.getInstance().scheduleDebouncedSync();
+          showToast('Textile supprimé.');
+          await this.loadDataAndRender();
+          this.options.onRefreshNeeded();
+        }
+      });
+    });
+
     const saveSyncBtn = this.container.querySelector('#param-save-sync-btn');
     if (saveSyncBtn) {
       saveSyncBtn.addEventListener('click', async () => {

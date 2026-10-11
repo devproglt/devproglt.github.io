@@ -18,15 +18,15 @@ export async function createEvent(data: {
 }): Promise<EventRecord> {
   const normDate = formatDateBrussels(data.date);
   const allowMultiple = await getAllowMultipleSessionsPerDay();
+  const defaultTitle = data.type === 'course' ? 'Course' : 'Entraînement standard';
+  const customTitle = (data.title !== undefined && data.title !== null) ? data.title.trim() : '';
 
   if (!allowMultiple) {
     const existingEvents = await getEventsByDateAndType(normDate, data.type);
     if (existingEvents.length > 0) {
       const existing = existingEvents[0];
-      const customTitle = data.title && data.title.trim();
-      const hasMeaningfulTitle = customTitle && customTitle !== 'Nouvelle entrée' && customTitle !== (data.type === 'course' ? 'Course' : 'Entraînement standard');
-      const newTitle = hasMeaningfulTitle ? customTitle : existing.title;
-      const newDesc = (data.description !== undefined && data.description.trim()) ? data.description.trim() : existing.description;
+      const newTitle = customTitle.length > 0 ? customTitle : (existing.title || defaultTitle);
+      const newDesc = (data.description !== undefined && data.description !== null && data.description.trim()) ? data.description.trim() : (existing.description || '');
 
       const updated: EventRecord = {
         ...existing,
@@ -42,8 +42,7 @@ export async function createEvent(data: {
 
   const now = Date.now();
   const id = data.id || generateUUID();
-  const defaultTitle = data.type === 'course' ? 'Course' : 'Entraînement standard';
-  const title = (data.title && data.title.trim()) ? data.title.trim() : defaultTitle;
+  const title = customTitle.length > 0 ? customTitle : defaultTitle;
 
   const event: EventRecord = {
     id,

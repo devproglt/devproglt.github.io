@@ -11,6 +11,12 @@ import {
 import { getYearsList, addYearIfMissing } from '../../db/meta';
 import { getAttendancesByStudent } from '../../db/attendances';
 import { getAllEvents, type EventRecord } from '../../db/events';
+import {
+  getTextileTypes,
+  getTextileDistributionsByStudent,
+  toggleStudentTextile,
+} from '../../db/textiles';
+import { SyncEngine } from '../../sync/engine';
 import { formatTimeBrussels, formatReadableDate } from '../../domain/dates';
 
 export interface FicheViewOptions {
@@ -50,9 +56,11 @@ export class FicheView {
     }
 
     this.student = student;
-    const [allAttendances, allEvents] = await Promise.all([
+    const [allAttendances, allEvents, textileTypes, textileDistributions] = await Promise.all([
       getAttendancesByStudent(student.id),
       getAllEvents(),
+      getTextileTypes(),
+      getTextileDistributionsByStudent(student.id),
     ]);
     const eventsMap = new Map<string, EventRecord>(allEvents.map((e) => [e.id, e]));
     const primaryEventByDateAndType = new Map<string, EventRecord>();
@@ -147,6 +155,47 @@ export class FicheView {
             ${STRINGS.student.lastSeen} : <strong>${lastSeen ? formatReadableDate(lastSeen) : STRINGS.student.never}</strong>
           </div>
         </div>
+
+        <!-- Section Textiles & Équipements -->
+        ${textileTypes.length > 0 ? `
+          <div style="background-color: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: 14px; box-shadow: var(--shadow-sm);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <h3 style="font-size: var(--font-size-base); font-weight: 700;">
+                👕 ${STRINGS.textiles.title}
+              </h3>
+              <span style="font-size: var(--font-size-xs); color: var(--text-muted); font-weight: 600;">
+                ${textileDistributions.filter((d) => d.received).length} / ${textileTypes.length} reçu(s)
+              </span>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              ${textileTypes.map((type) => {
+                const dist = textileDistributions.find((d) => d.textileTypeId === type.id);
+                const isReceived = Boolean(dist && dist.received);
+                return `
+                  <div style="display: flex; align-items: center; justify-content: space-between; background: var(--bg-surface-hover); border-radius: var(--radius-md); padding: 8px 12px; gap: 8px;">
+                    <div>
+                      <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-primary);">
+                        ${this.escapeHtml(type.name)}
+                      </div>
+                      <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">
+                        ${isReceived ? `Reçu le ${dist?.receivedDate ? formatReadableDate(dist.receivedDate) : 'Oui'}` : 'Non distribué'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      class="${isReceived ? 'btn-textile-received' : 'btn-textile-none'} fiche-textile-toggle-btn"
+                      data-textile-id="${type.id}"
+                      style="min-height: 32px;"
+                    >
+                      ${isReceived ? '✓ Reçu' : '+ Donner'}
+                    </button>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
 
         <!-- Historique chronologique -->
         <div>
@@ -475,6 +524,19 @@ export class FicheView {
         this.loadDataAndRender();
       });
     }
+
+    const textileBtns = this.container.querySelectorAll<HTMLButtonElement>('.fiche-textile-toggle-btn');
+    textileBtns.forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const textileId = btn.dataset.textileId;
+        if (!textileId || !this.student) return;
+        const updated = await toggleStudentTextile(this.student.id, textileId);
+        SyncEngine.getInstance().scheduleDebouncedSync();
+        showToast(updated.received ? 'Dotation marquée comme reçue !' : 'Dotation retirée.');
+        await this.loadDataAndRender();
+        this.options.onRefreshNeeded();
+      });
+    });
 
     const sessionCards = this.container.querySelectorAll<HTMLElement>('.fiche-session-card');
     sessionCards.forEach((card) => {

@@ -1,4 +1,10 @@
-import type { StudentRecord, AttendanceRecord, EventRecord } from '../db/schema';
+import type {
+  StudentRecord,
+  AttendanceRecord,
+  EventRecord,
+  TextileTypeRecord,
+  TextileDistributionRecord,
+} from '../db/schema';
 
 export interface PushRequestPayload {
   action: 'push';
@@ -7,6 +13,8 @@ export interface PushRequestPayload {
   students: StudentRecord[];
   events: EventRecord[];
   attendances: AttendanceRecord[];
+  textileTypes?: TextileTypeRecord[];
+  textileDistributions?: TextileDistributionRecord[];
 }
 
 export interface PushResponsePayload {
@@ -27,6 +35,8 @@ export interface PullResponsePayload {
   students?: StudentRecord[];
   events?: EventRecord[];
   attendances?: AttendanceRecord[];
+  textileTypes?: TextileTypeRecord[];
+  textileDistributions?: TextileDistributionRecord[];
   cursor?: number;
   error?: string;
 }
@@ -40,7 +50,9 @@ export async function pushToServer(
   deviceId: string,
   dirtyStudents: StudentRecord[],
   dirtyEvents: EventRecord[],
-  dirtyAttendances: AttendanceRecord[]
+  dirtyAttendances: AttendanceRecord[],
+  dirtyTextileTypes: TextileTypeRecord[] = [],
+  dirtyTextileDistributions: TextileDistributionRecord[] = []
 ): Promise<PushResponsePayload> {
   const payload: PushRequestPayload = {
     action: 'push',
@@ -49,6 +61,8 @@ export async function pushToServer(
     students: dirtyStudents,
     events: dirtyEvents,
     attendances: dirtyAttendances,
+    textileTypes: dirtyTextileTypes,
+    textileDistributions: dirtyTextileDistributions,
   };
 
   try {

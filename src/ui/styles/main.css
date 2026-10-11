@@ -34,7 +34,9 @@ html, body {
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: calc(var(--navbar-height) + 16px);
+  padding-bottom: calc(var(--navbar-height) + env(safe-area-inset-bottom, 0px) + 16px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 /* En-tête de l'application */
@@ -43,7 +45,10 @@ html, body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border-color);
-  padding: 12px 16px;
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-bottom: 12px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
   position: sticky;
   top: 0;
   z-index: 50;
@@ -110,7 +115,10 @@ html, body {
   bottom: 0;
   left: 0;
   right: 0;
-  height: var(--navbar-height);
+  height: calc(var(--navbar-height) + env(safe-area-inset-bottom, 0px));
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
   background-color: var(--glass-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -911,6 +919,7 @@ html, body {
   border-top-left-radius: var(--radius-lg);
   border-top-right-radius: var(--radius-lg);
   padding: 20px;
+  padding-bottom: max(20px, env(safe-area-inset-bottom, 0px));
   box-shadow: var(--shadow-lg);
   animation: slideUp 200ms cubic-bezier(0, 0, 0.2, 1);
 }
@@ -928,7 +937,7 @@ html, body {
 /* Notifications Toast */
 .toast-container {
   position: fixed;
-  top: 16px;
+  top: max(16px, env(safe-area-inset-top, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 300;
@@ -955,4 +964,65 @@ html, body {
 @keyframes toastIn {
   from { opacity: 0; transform: translateY(-12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+/* Composants et Dotations Textiles */
+.textile-card-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+  gap: 10px;
+}
+
+.btn-textile-received {
+  background-color: var(--accent-presence-light);
+  color: var(--accent-presence);
+  border: 1px solid var(--accent-presence);
+  font-weight: 700;
+  border-radius: var(--radius-full);
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn-textile-none {
+  background-color: var(--bg-surface-hover);
+  color: var(--text-muted);
+  border: 1px solid var(--border-color);
+  font-weight: 500;
+  border-radius: var(--radius-full);
+  padding: 4px 10px;
+  font-size: 0.76rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.textile-batch-bar {
+  position: sticky;
+  bottom: 8px;
+  background: var(--text-primary);
+  color: var(--text-inverse);
+  padding: 8px 14px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: var(--shadow-lg);
+  z-index: 90;
+  margin: 6px 0;
+  animation: slideUp 150ms ease-out;
 }

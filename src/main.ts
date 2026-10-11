@@ -82,7 +82,7 @@ class App {
       <div id="header-container"></div>
       <main class="app-content" id="view-container"></main>
       <div id="navbar-container"></div>
-      <div id="sw-update-banner" style="display: none; position: fixed; top: 0; left: 0; right: 0; background: var(--color-warning); color: #fff; padding: 8px 16px; text-align: center; font-size: 0.85rem; z-index: 1000; font-weight: 600; justify-content: space-between; align-items: center;">
+      <div id="sw-update-banner" style="display: none; position: fixed; top: 0; left: 0; right: 0; background: var(--color-warning); color: #fff; padding-top: max(8px, env(safe-area-inset-top, 0px)); padding-bottom: 8px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); text-align: center; font-size: 0.85rem; z-index: 1000; font-weight: 600; justify-content: space-between; align-items: center;">
         <span>Mise à jour disponible !</span>
         <button id="sw-update-btn" class="btn btn-secondary" style="min-height: 32px; padding: 0 10px; font-size: 0.75rem;">
           Mettre à jour

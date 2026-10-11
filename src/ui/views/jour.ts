@@ -323,12 +323,15 @@ export class JourView {
         const origType = this.activeTab;
 
         if (origEventId) {
-          await updateEvent(origEventId, {
+          const updated = await updateEvent(origEventId, {
             title: newTitle,
             date: newDate,
             type: selectedType,
             description: newDesc,
           });
+          if (updated) {
+            this.currentEvent = updated;
+          }
 
           if (newDate !== origDate || selectedType !== origType) {
             await db.attendances.where('eventId').equals(origEventId).modify({
@@ -347,6 +350,9 @@ export class JourView {
             description: newDesc,
           });
 
+          this.currentEvent = newEvent;
+          this.options.eventId = newEvent.id;
+
           await db.attendances.where('[date+type]').equals([origDate, origType]).modify({
             eventId: newEvent.id,
             date: newDate,
@@ -359,6 +365,9 @@ export class JourView {
         showToast('Séance mise à jour !');
         this.options.date = newDate;
         this.activeTab = selectedType;
+        if (this.currentEvent) {
+          this.options.eventId = this.currentEvent.id;
+        }
         closeOverlay();
         await this.loadDataAndRender();
         this.options.onRefreshNeeded();

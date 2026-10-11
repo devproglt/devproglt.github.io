@@ -71,3 +71,39 @@ export async function exportCurrentViewToExcel(
 
   XLSX.writeFile(workbook, `presences_${today}.xlsx`);
 }
+
+export async function exportTextilesToExcel(
+  students: StudentRecord[],
+  textileTypes: { id: string; name: string }[],
+  distributions: { studentId: string; textileTypeId: string; received: boolean; receivedDate?: string }[]
+): Promise<void> {
+  const XLSX = await getXLSXModule();
+  const today = getTodayBrussels();
+
+  const distMap = new Map<string, { received: boolean; receivedDate?: string }>();
+  for (const d of distributions) {
+    distMap.set(`${d.studentId}_${d.textileTypeId}`, d);
+  }
+
+  const data = students.map((s) => {
+    const row: Record<string, any> = {
+      Nom: s.lastName,
+      Prénom: s.firstName,
+      Année: s.year,
+      Sexe: s.gender,
+      Actif: s.active ? 'Oui' : 'Non',
+    };
+
+    for (const t of textileTypes) {
+      const d = distMap.get(`${s.id}_${t.id}`);
+      row[t.name] = d && d.received ? `Reçu (${d.receivedDate || 'Oui'})` : 'Non';
+    }
+
+    return row;
+  });
+
+  const workbook = XLSX.utils.book_new();
+  const ws = XLSX.utils.json_to_sheet(data);
+  XLSX.utils.book_append_sheet(workbook, ws, 'Dotations Textiles');
+  XLSX.writeFile(workbook, `dotations_textiles_${today}.xlsx`);
+}

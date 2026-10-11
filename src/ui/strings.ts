@@ -118,6 +118,24 @@ export const STRINGS = {
     errorCount: 'Lignes en erreur :',
   },
 
+  // Textiles & Dotations
+  textiles: {
+    title: 'Textiles & Équipements',
+    tabEleves: 'Liste élèves',
+    tabTextiles: 'Dotations Textiles',
+    noTextilesConfigured: 'Aucun type de textile configuré.',
+    createTextile: 'Créer un textile',
+    manageTextiles: 'Gérer les textiles',
+    batchDistribution: 'Distribution groupée',
+    batchDistributeAction: 'Attribuer aux élèves sélectionnés',
+    received: 'Reçu',
+    notReceived: 'Non reçu',
+    receivedOn: 'Reçu le',
+    textileName: 'Nom du textile (ex: T-shirt, Veste, Short)',
+    confirmDeleteTextile: 'Supprimer ce textile supprimera également toutes les attributions associées. Confirmer ?',
+    distributeSuccess: 'Distribution enregistrée avec succès !',
+  },
+
   // Notifications PWA
   pwa: {
     updateAvailable: 'Une nouvelle version de l\'application est disponible.',

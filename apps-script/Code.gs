@@ -156,11 +156,62 @@ function handlePush(ss, request, configSheet) {
       }
     }
 
+    // --- Processus PUSH pour les types de textiles ---
+    if (request.textileTypes && request.textileTypes.length > 0) {
+      const textileTypesSheet = getOrCreateSheet(ss, 'textile_types');
+      const ttMaps = buildIdMap(textileTypesSheet);
+      for (let i = 0; i < request.textileTypes.length; i++) {
+        const incoming = request.textileTypes[i];
+        let rowIdx = ttMaps[incoming.id];
+        if (rowIdx) {
+          const currentUpdatedAt = parseInt(textileTypesSheet.getRange(rowIdx, 4).getValue() || 0, 10);
+          if (incoming.updatedAt >= currentUpdatedAt) {
+            updateTextileTypeRow(textileTypesSheet, rowIdx, incoming, nextSeq++);
+            accepted.push(incoming.id);
+          } else {
+            rejected.push(incoming.id);
+          }
+        } else {
+          appendTextileTypeRow(textileTypesSheet, incoming, nextSeq++);
+          const lastRow = textileTypesSheet.getLastRow();
+          ttMaps[incoming.id] = lastRow;
+          accepted.push(incoming.id);
+        }
+      }
+    }
+
+    // --- Processus PUSH pour les distributions textiles ---
+    if (request.textileDistributions && request.textileDistributions.length > 0) {
+      const textilesSheet = getOrCreateSheet(ss, 'textiles');
+      const tMaps = buildTextileMaps(textilesSheet);
+      for (let i = 0; i < request.textileDistributions.length; i++) {
+        const incoming = request.textileDistributions[i];
+        const key = incoming.studentId + '_' + incoming.textileTypeId;
+        let rowIdx = tMaps.idMap[incoming.id] || tMaps.keyMap[key];
+        incoming.id = key;
+        if (rowIdx) {
+          const currentUpdatedAt = parseInt(textilesSheet.getRange(rowIdx, 7).getValue() || 0, 10);
+          if (incoming.updatedAt >= currentUpdatedAt) {
+            updateTextileRow(textilesSheet, rowIdx, incoming, nextSeq++);
+            accepted.push(incoming.id);
+          } else {
+            rejected.push(incoming.id);
+          }
+        } else {
+          appendTextileRow(textilesSheet, incoming, nextSeq++);
+          const lastRow = textilesSheet.getLastRow();
+          tMaps.idMap[incoming.id] = lastRow;
+          tMaps.keyMap[key] = lastRow;
+          accepted.push(incoming.id);
+        }
+      }
+    }
+
     // Mise à jour de la séquence courante
     setConfigValue(configSheet, 'nextSeq', nextSeq);
 
     // Enregistrement dans le journal
-    const totalLines = (request.students ? request.students.length : 0) + (request.events ? request.events.length : 0) + (request.attendances ? request.attendances.length : 0);
+    const totalLines = (request.students ? request.students.length : 0) + (request.events ? request.events.length : 0) + (request.attendances ? request.attendances.length : 0) + (request.textileTypes ? request.textileTypes.length : 0) + (request.textileDistributions ? request.textileDistributions.length : 0);
     logSheet.appendRow([new Date().toISOString(), request.deviceId || 'inconnu', 'push', totalLines]);
 
     return jsonResponse({ ok: true, accepted: accepted, rejected: rejected });
@@ -321,17 +372,69 @@ function handlePull(ss, request) {
         };
       }
     }
+  const textileTypesSheet = getOrCreateSheet(ss, 'textile_types');
+  const pulledTextileTypes = [];
+  const ttValues = textileTypesSheet.getDataRange().getValues();
+  for (let i = 1; i < ttValues.length; i++) {
+    const row = ttValues[i];
+    if (!row[0] && !row[1]) continue;
+    let seq = parseInt(row[4], 10);
+    if (isNaN(seq)) seq = i;
+    if (since === 0 || seq > since) {
+      let updatedAt = parseInt(row[3], 10);
+      if (isNaN(updatedAt) || updatedAt <= 0) updatedAt = Date.now();
+      pulledTextileTypes.push({
+        id: String(row[0] || '').trim(),
+        name: String(row[1] || '').trim(),
+        createdAt: String(row[2] || new Date().toISOString()),
+        updatedAt: updatedAt,
+      });
+    }
+  }
+
+  const textilesSheet = getOrCreateSheet(ss, 'textiles');
+  const pulledTextilesMap = {};
+  const tValues = textilesSheet.getDataRange().getValues();
+  for (let i = 1; i < tValues.length; i++) {
+    const row = tValues[i];
+    if (!row[0] && !row[1]) continue;
+    let seq = parseInt(row[7], 10);
+    if (isNaN(seq)) seq = i;
+    if (since === 0 || seq > since) {
+      let updatedAt = parseInt(row[6], 10);
+      if (isNaN(updatedAt) || updatedAt <= 0) updatedAt = Date.now();
+      const sId = String(row[1] || '').trim();
+      const ttId = String(row[2] || '').trim();
+      const key = sId + '_' + ttId;
+      const recvVal = row[3];
+      let received = true;
+      if (recvVal === false || String(recvVal).trim().toLowerCase() === 'false' || String(recvVal).trim().toLowerCase() === 'faux' || String(recvVal).trim() === '0') {
+        received = false;
+      }
+      pulledTextilesMap[key] = {
+        id: key,
+        studentId: sId,
+        textileTypeId: ttId,
+        received: received,
+        receivedDate: normalizeDateVal(row[4]),
+        notes: String(row[5] || ''),
+        updatedAt: updatedAt,
+      };
+    }
   }
 
   const pulledStudents = Object.keys(pulledStudentsMap).map(function(k) { return pulledStudentsMap[k]; });
   const pulledEvents = Object.keys(pulledEventsMap).map(function(k) { return pulledEventsMap[k]; });
   const pulledAttendances = Object.keys(pulledAttendancesMap).map(function(k) { return pulledAttendancesMap[k]; });
+  const pulledTextileDistributions = Object.keys(pulledTextilesMap).map(function(k) { return pulledTextilesMap[k]; });
 
   return jsonResponse({
     ok: true,
     students: pulledStudents,
     events: pulledEvents,
     attendances: pulledAttendances,
+    textileTypes: pulledTextileTypes,
+    textileDistributions: pulledTextileDistributions,
     cursor: currentNextSeq,
   });
 }
@@ -488,6 +591,36 @@ function updateAttendanceRow(sheet, rowIdx, a, seq) {
   sheet.getRange(rowIdx, 1, 1, 10).setValues([[a.id, a.eventId || (a.date + '_' + a.type), a.studentId, a.date, a.type, a.present, a.markedAt, a.deviceId, a.updatedAt, seq]]);
 }
 
+function appendTextileTypeRow(sheet, t, seq) {
+  sheet.appendRow([t.id, t.name, t.createdAt || new Date().toISOString(), t.updatedAt, seq]);
+}
+
+function updateTextileTypeRow(sheet, rowIdx, t, seq) {
+  sheet.getRange(rowIdx, 1, 1, 5).setValues([[t.id, t.name, t.createdAt || new Date().toISOString(), t.updatedAt, seq]]);
+}
+
+function appendTextileRow(sheet, d, seq) {
+  sheet.appendRow([d.id, d.studentId, d.textileTypeId, d.received, d.receivedDate || '', d.notes || '', d.updatedAt, seq]);
+}
+
+function updateTextileRow(sheet, rowIdx, d, seq) {
+  sheet.getRange(rowIdx, 1, 1, 8).setValues([[d.id, d.studentId, d.textileTypeId, d.received, d.receivedDate || '', d.notes || '', d.updatedAt, seq]]);
+}
+
+function buildTextileMaps(sheet) {
+  const idMap = {};
+  const keyMap = {};
+  const values = sheet.getDataRange().getValues();
+  for (let i = 1; i < values.length; i++) {
+    const id = String(values[i][0] || '').trim();
+    const studentId = String(values[i][1] || '').trim();
+    const textileTypeId = String(values[i][2] || '').trim();
+    if (id) idMap[id] = i + 1;
+    if (studentId && textileTypeId) keyMap[studentId + '_' + textileTypeId] = i + 1;
+  }
+  return { idMap: idMap, keyMap: keyMap };
+}
+
 function getOrCreateSheet(ss, name) {
   let sheet = ss.getSheetByName(name);
   if (!sheet) {
@@ -498,6 +631,10 @@ function getOrCreateSheet(ss, name) {
       sheet.appendRow(['id', 'date', 'type', 'title', 'description', 'createdAt', 'updatedAt', 'seq']);
     } else if (name === 'attendances') {
       sheet.appendRow(['id', 'eventId', 'studentId', 'date', 'type', 'present', 'markedAt', 'deviceId', 'updatedAt', 'seq']);
+    } else if (name === 'textile_types') {
+      sheet.appendRow(['id', 'name', 'createdAt', 'updatedAt', 'seq']);
+    } else if (name === 'textiles') {
+      sheet.appendRow(['id', 'studentId', 'textileTypeId', 'received', 'receivedDate', 'notes', 'updatedAt', 'seq']);
     } else if (name === 'config') {
       sheet.appendRow(['key', 'value']);
       sheet.appendRow(['token', 'VOTRE_JETON_SECRET_D_AU_MOINS_32_CARACTERES']);

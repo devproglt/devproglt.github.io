@@ -39,6 +39,25 @@ export interface AttendanceRecord {
   dirty: 0 | 1;
 }
 
+export interface TextileTypeRecord {
+  id: string; // uuid ou slug unique
+  name: string; // e.g. "T-shirt", "Veste", "Short", etc.
+  createdAt: string; // ISO 8601
+  updatedAt: number; // ms epoch
+  dirty: 0 | 1;
+}
+
+export interface TextileDistributionRecord {
+  id: string; // `${studentId}_${textileTypeId}`
+  studentId: string;
+  textileTypeId: string;
+  received: boolean;
+  receivedDate: string; // YYYY-MM-DD
+  notes?: string;
+  updatedAt: number;
+  dirty: 0 | 1;
+}
+
 export interface MetaRecord {
   key: string;
   value: any;
@@ -59,6 +78,8 @@ export class PresencesDatabase extends Dexie {
   attendances!: EntityTable<AttendanceRecord, 'id'>;
   meta!: EntityTable<MetaRecord, 'key'>;
   importLog!: EntityTable<ImportLogRecord, 'id'>;
+  textileTypes!: EntityTable<TextileTypeRecord, 'id'>;
+  textileDistributions!: EntityTable<TextileDistributionRecord, 'id'>;
 
   constructor() {
     super('PresencesDB');
@@ -108,6 +129,16 @@ export class PresencesDatabase extends Dexie {
       for (const ev of eventMap.values()) {
         await eventsTable.put(ev);
       }
+    });
+
+    this.version(3).stores({
+      students: 'id, lastName, firstName, year, gender, active, isInternal, dirty, searchKey',
+      events: 'id, date, type, [date+type], updatedAt, dirty',
+      attendances: 'id, eventId, studentId, date, type, [eventId+studentId], [date+type], dirty',
+      meta: 'key',
+      importLog: 'id, date',
+      textileTypes: 'id, name, updatedAt, dirty',
+      textileDistributions: 'id, studentId, textileTypeId, [studentId+textileTypeId], received, dirty',
     });
   }
 }

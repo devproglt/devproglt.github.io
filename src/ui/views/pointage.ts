@@ -258,7 +258,7 @@ export class PointageView {
               type="text"
               id="pointage-create-title"
               class="search-input"
-              placeholder="Nouvelle entrée"
+              placeholder="${this.options.type === 'course' ? 'ex: Course départementale, Cross...' : 'ex: Entraînement Demi-fond...'}"
               autocomplete="off"
             />
           </div>
@@ -308,6 +308,13 @@ export class PointageView {
       const newType = val as 'presence' | 'course';
       this.options.type = newType;
       applyAccentTheme(newType);
+      if (this.options.onTypeChange) {
+        this.options.onTypeChange(newType);
+      }
+      const titleEl = this.container.querySelector<HTMLInputElement>('#pointage-create-title');
+      if (titleEl) {
+        titleEl.placeholder = newType === 'course' ? 'ex: Course départementale, Cross...' : 'ex: Entraînement Demi-fond...';
+      }
     });
 
     const titleInput = this.container.querySelector<HTMLInputElement>('#pointage-create-title');
@@ -341,14 +348,17 @@ export class PointageView {
         const dateInputEl = this.container.querySelector<HTMLInputElement>('#pointage-create-date');
         const descInputEl = this.container.querySelector<HTMLInputElement>('#pointage-create-desc');
 
-        const customTitle = titleInputEl?.value.trim() || 'Nouvelle entrée';
+        const typedTitle = titleInputEl?.value.trim() || '';
         const selectedDate = dateInputEl?.value.trim() || this.options.date;
         const customDesc = descInputEl?.value.trim() || '';
+
+        const defaultTitle = this.options.type === 'course' ? 'Course' : 'Entraînement standard';
+        const finalTitle = typedTitle || defaultTitle;
 
         const newEvent = await createEvent({
           date: selectedDate,
           type: this.options.type,
-          title: customTitle,
+          title: finalTitle,
           description: customDesc,
         });
 
@@ -357,6 +367,11 @@ export class PointageView {
         this.options.eventId = newEvent.id;
         this.activeEvent = newEvent;
         this.isCreatingNewEvent = false;
+
+        // Mise à jour de l'URL pour conserver l'eventId en cas de rafraîchissement
+        try {
+          window.location.hash = `#/pointage?eventId=${newEvent.id}&date=${selectedDate}&type=${newEvent.type}`;
+        } catch (_) {}
 
         if (this.options.onEventChange) {
           this.options.onEventChange(newEvent.id, newEvent.date, newEvent.type);
@@ -1130,12 +1145,16 @@ export class PointageView {
         const oldDate = this.activeEvent!.date;
         const oldType = this.activeEvent!.type;
 
-        await updateEvent(eventId, {
+        const updated = await updateEvent(eventId, {
           title,
           date,
           type: selectedType,
           description,
         });
+
+        if (updated) {
+          this.activeEvent = updated;
+        }
 
         if (date !== oldDate || selectedType !== oldType) {
           await db.attendances.where('eventId').equals(eventId).modify({
@@ -1148,6 +1167,10 @@ export class PointageView {
 
         this.options.date = date;
         this.options.type = selectedType;
+
+        try {
+          window.location.hash = `#/pointage?eventId=${eventId}&date=${date}&type=${selectedType}`;
+        } catch (_) {}
 
         showToast('Séance mise à jour !');
         closeOverlay();
