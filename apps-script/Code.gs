@@ -372,6 +372,8 @@ function handlePull(ss, request) {
         };
       }
     }
+  }
+
   const textileTypesSheet = getOrCreateSheet(ss, 'textile_types');
   const pulledTextileTypes = [];
   const ttValues = textileTypesSheet.getDataRange().getValues();
